@@ -33,6 +33,16 @@ interface Props {
    * otherwise wrap into each other and become unreadable.
    */
   labelWidth?: number;
+  /**
+   * Fixed value-axis domain. Set this for bounded instruments — a 1-5
+   * Likert should be drawn on its own scale, not auto-fitted to the data.
+   * Auto-fitting makes a 0.1 difference span half the chart, and lets the
+   * axis maximum jump between charts of the same measure (Recharts nices
+   * the step, so a max of 4.09 yields a 0-8 axis while 3.9 yields 0-4).
+   * Keep the lower bound at zero: bar length must stay proportional to
+   * value (§10.11 forbids a truncated bar axis).
+   */
+  domain?: [number, number];
 }
 
 /**
@@ -48,6 +58,7 @@ export function SortedHorizontalBar({
   referenceLabel,
   preserveOrder = false,
   labelWidth = 120,
+  domain,
 }: Props) {
   const { theme } = useTheme();
   const palette = theme === 'dark' ? paletteDark : paletteLight;
@@ -58,7 +69,14 @@ export function SortedHorizontalBar({
     <ResponsiveContainer width="100%" height="100%">
       <BarChart data={sorted} layout="vertical" margin={{ top: 4, right: 24, bottom: 4, left: 4 }}>
         <CartesianGrid horizontal={false} stroke={palette.gridline} />
-        <XAxis type="number" tick={{ fontSize: 11, fill: palette.inkMuted }} tickFormatter={fmt} stroke={palette.gridline} />
+        <XAxis
+          type="number"
+          domain={domain}
+          allowDataOverflow={false}
+          tick={{ fontSize: 11, fill: palette.inkMuted }}
+          tickFormatter={fmt}
+          stroke={palette.gridline}
+        />
         <YAxis
           type="category"
           dataKey="label"
