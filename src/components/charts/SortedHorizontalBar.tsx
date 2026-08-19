@@ -13,17 +13,31 @@ interface Props {
   formatValue?: (n: number) => string;
   referenceValue?: number;
   referenceLabel?: string;
+  /**
+   * Keep the caller's order instead of sorting by value. Required for
+   * inherently ordered dimensions — tenure bands, career levels, span
+   * bands, funnel stages (§10.5): sorting those by magnitude destroys
+   * the sequence that makes the chart readable.
+   */
+  preserveOrder?: boolean;
 }
 
 /**
- * Magnitude across categories — always sorted descending, bars start at
- * zero, gridline on one axis only. Never a pie above five slices (§10.3,
- * §10.11).
+ * Magnitude across categories — sorted descending by default, bars start
+ * at zero, gridline on one axis only. Never a pie above five slices
+ * (§10.3, §10.11).
  */
-export function SortedHorizontalBar({ data, valueLabel, formatValue, referenceValue, referenceLabel }: Props) {
+export function SortedHorizontalBar({
+  data,
+  valueLabel,
+  formatValue,
+  referenceValue,
+  referenceLabel,
+  preserveOrder = false,
+}: Props) {
   const { theme } = useTheme();
   const palette = theme === 'dark' ? paletteDark : paletteLight;
-  const sorted = [...data].sort((a, b) => b.value - a.value);
+  const sorted = preserveOrder ? data : [...data].sort((a, b) => b.value - a.value);
   const fmt = formatValue ?? ((n: number) => n.toLocaleString());
 
   return (
@@ -38,6 +52,11 @@ export function SortedHorizontalBar({ data, valueLabel, formatValue, referenceVa
           tick={{ fontSize: 11 }}
           axisLine={{ stroke: palette.gridline }}
           tickLine={false}
+          // Recharts thins category labels when vertical space is tight,
+          // which silently leaves bars unlabelled — a category chart whose
+          // categories are unreadable has lost its identity channel
+          // (§10.9: colour is never the only encoding). Force every label.
+          interval={0}
         />
         <Tooltip formatter={(v) => [fmt(Number(v)), valueLabel]} />
         {referenceValue !== undefined && (

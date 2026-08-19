@@ -6,7 +6,7 @@ import { StackedBar } from '../components/charts/StackedBar';
 import { useFilters } from '../context/FilterContext';
 import { useMetric, useTableRpc } from '../lib/useMetric';
 import { formatCount, formatRate, formatScore } from '../lib/format';
-import type { MetricResultStatus } from '../lib/types';
+import { displayValue } from '../lib/metricDisplay';
 
 /** Page 1 — modeled on meridian_ceo_people_dashboard.html (PRD_Class2 §6.1). */
 export function ExecutiveOverview() {
@@ -61,6 +61,7 @@ export function ExecutiveOverview() {
           title="Composition by function"
           status={composition.loading ? 'loading' : composition.data && composition.data.length > 0 ? 'ready' : 'empty'}
           spanClass="span-6"
+          bodyHeight={280}
         >
           {composition.data && (
             <SortedHorizontalBar
@@ -118,17 +119,4 @@ export function ExecutiveOverview() {
       </div>
     </div>
   );
-}
-
-function displayValue(
-  metric: { result: { status: MetricResultStatus; value: unknown } | null },
-  fmt: (n: number) => string,
-): string {
-  if (!metric.result) return '—';
-  const { status, value } = metric.result;
-  if (status === 'value' && value !== null) return fmt(Number(value));
-  if (status === 'no_data') return 'No data';
-  if (status === 'suppressed') return 'Suppressed';
-  if (status === 'unavailable') return 'N/A';
-  return '—';
 }

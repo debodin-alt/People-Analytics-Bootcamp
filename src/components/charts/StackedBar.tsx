@@ -7,10 +7,17 @@ interface Props {
   categoryKey: string;
   segments: { key: string; label: string }[];
   formatValue?: (n: number) => string;
+  /**
+   * Stacking asserts the segments sum to a meaningful whole. Set false for
+   * series that are opposing flows rather than parts of one total — hires
+   * vs exits, for instance, where a stack would imply a combined quantity
+   * that does not exist.
+   */
+  stacked?: boolean;
 }
 
 /** Change over time, part-to-whole — stacked bar, at most 4 segments (§10.3). */
-export function StackedBar({ data, categoryKey, segments, formatValue }: Props) {
+export function StackedBar({ data, categoryKey, segments, formatValue, stacked = true }: Props) {
   const { theme } = useTheme();
   const palette = theme === 'dark' ? paletteDark : paletteLight;
   const fmt = formatValue ?? ((n: number) => n.toLocaleString());
@@ -24,7 +31,14 @@ export function StackedBar({ data, categoryKey, segments, formatValue }: Props) 
         <Tooltip formatter={(v) => fmt(Number(v))} />
         <Legend wrapperStyle={{ fontSize: 11 }} />
         {segments.map((s, i) => (
-          <Bar key={s.key} dataKey={s.key} name={s.label} stackId="a" fill={palette.series[i]} maxBarSize={40} />
+          <Bar
+            key={s.key}
+            dataKey={s.key}
+            name={s.label}
+            stackId={stacked ? 'a' : undefined}
+            fill={palette.series[i]}
+            maxBarSize={40}
+          />
         ))}
       </BarChart>
     </ResponsiveContainer>

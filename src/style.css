@@ -229,7 +229,10 @@ a {
 
 .chart-frame .chart-body {
   flex: 1;
-  min-height: 160px;
+  /* Category charts force every axis label (interval={0}), so the body
+     needs enough height for the widest case in v0.1 — 14 functions —
+     to stay legible at 11px rather than overlapping. */
+  min-height: 210px;
   position: relative;
 }
 

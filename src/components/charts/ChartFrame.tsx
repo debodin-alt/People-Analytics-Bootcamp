@@ -17,6 +17,12 @@ interface ChartFrameProps {
   onClearFilter?: () => void;
   children: ReactNode;
   spanClass?: string;
+  /**
+   * Explicit body height in px for category charts with many rows. Every
+   * axis label is forced to render, so a 14-category chart in the default
+   * height overlaps its own labels. Roughly 16px per category.
+   */
+  bodyHeight?: number;
 }
 
 export function ChartFrame({
@@ -27,11 +33,12 @@ export function ChartFrame({
   onClearFilter,
   children,
   spanClass = 'span-6',
+  bodyHeight,
 }: ChartFrameProps) {
   return (
     <div className={`chart-frame ${spanClass}`}>
       <div className="chart-title">{title}</div>
-      <div className="chart-body">
+      <div className="chart-body" style={bodyHeight ? { minHeight: bodyHeight } : undefined}>
         {status === 'loading' && <div className="chart-skeleton" aria-hidden="true" />}
         {status === 'empty' && (
           <div className="chart-state-message">
