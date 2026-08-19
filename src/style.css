@@ -1,0 +1,311 @@
+:root {
+  --surface: #ffffff;
+  --page-plane: #f4f6f8;
+  --ink: #1a1f2b;
+  --ink-muted: #5b6472;
+  --ink-faint: #8b93a1;
+  --border: #e1e0d9;
+  --gridline: #e1e0d9;
+  --nav-bg: #ffffff;
+  --nav-active-bg: #eef2f6;
+  --focus-ring: #2a6fa8;
+
+  --good: #0ca30c;
+  --warning: #fab219;
+  --serious: #ec835a;
+  --critical: #d03b3b;
+
+  --sans: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --mono: ui-monospace, 'SF Mono', Consolas, monospace;
+
+  color-scheme: light dark;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --surface: #1a1f2b;
+    --page-plane: #1a1f2b;
+    --ink: #eef1f5;
+    --ink-muted: #a7b0bd;
+    --ink-faint: #6b7280;
+    --border: #2c2c2a;
+    --gridline: #2c2c2a;
+    --nav-bg: #14181f;
+    --nav-active-bg: #232937;
+    --focus-ring: #3987e5;
+  }
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  font: 14px/1.5 var(--sans);
+  color: var(--ink);
+  background: var(--page-plane);
+}
+
+button,
+input,
+select {
+  font: inherit;
+  color: inherit;
+}
+
+a {
+  color: inherit;
+}
+
+:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+}
+
+/* ---- App shell ------------------------------------------------------- */
+
+.app-shell {
+  display: grid;
+  grid-template-columns: 224px 1fr;
+  grid-template-rows: 56px auto 1fr;
+  grid-template-areas:
+    'nav header'
+    'nav filterbar'
+    'nav main';
+  min-height: 100vh;
+}
+
+.app-nav {
+  grid-area: nav;
+  background: var(--nav-bg);
+  border-right: 1px solid var(--border);
+  padding: 16px 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.app-nav .brand {
+  font-weight: 600;
+  padding: 8px 12px 16px;
+  font-size: 15px;
+}
+
+.app-nav a {
+  display: block;
+  padding: 8px 12px;
+  border-radius: 6px;
+  text-decoration: none;
+  color: var(--ink-muted);
+  font-size: 13px;
+}
+
+.app-nav a:hover {
+  background: var(--nav-active-bg);
+  color: var(--ink);
+}
+
+.app-nav a.active {
+  background: var(--nav-active-bg);
+  color: var(--ink);
+  font-weight: 600;
+}
+
+.app-header {
+  grid-area: header;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 20px;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface);
+}
+
+.app-header .page-title {
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.app-header .header-right {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  font-size: 12px;
+  color: var(--ink-muted);
+}
+
+.filter-bar {
+  grid-area: filterbar;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 20px;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface);
+  flex-wrap: wrap;
+}
+
+.filter-bar select {
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 5px 8px;
+  background: var(--surface);
+  font-size: 12px;
+}
+
+.filter-bar .clear-link {
+  font-size: 12px;
+  color: var(--focus-ring);
+  cursor: pointer;
+  background: none;
+  border: none;
+}
+
+.app-main {
+  grid-area: main;
+  padding: 20px;
+  overflow-x: auto;
+}
+
+/* ---- Canvas pattern: KPI row, grid, detail table (§6.1 / §10.2) ------- */
+
+.kpi-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.chart-grid {
+  display: grid;
+  grid-template-columns: repeat(12, 1fr);
+  gap: 12px;
+}
+
+.chart-grid > * {
+  grid-column: span 12;
+}
+
+@media (min-width: 900px) {
+  .chart-grid > .span-6 {
+    grid-column: span 6;
+  }
+  .chart-grid > .span-4 {
+    grid-column: span 4;
+  }
+  .chart-grid > .span-8 {
+    grid-column: span 8;
+  }
+}
+
+/* ---- Chart frame (§10.6 states) --------------------------------------- */
+
+.chart-frame {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 14px 16px 16px;
+  display: flex;
+  flex-direction: column;
+  min-height: 220px;
+}
+
+.chart-frame .chart-title {
+  font-size: 13px;
+  font-weight: 600;
+  margin-bottom: 10px;
+}
+
+.chart-frame .chart-body {
+  flex: 1;
+  min-height: 160px;
+  position: relative;
+}
+
+.chart-state-message {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  color: var(--ink-faint);
+  font-size: 12px;
+  padding: 12px;
+}
+
+.chart-state-message.error {
+  color: var(--critical);
+}
+
+.chart-skeleton {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(90deg, var(--page-plane) 25%, var(--border) 37%, var(--page-plane) 63%);
+  background-size: 400% 100%;
+  border-radius: 6px;
+  animation: skeleton-loading 1.4s ease infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .chart-skeleton {
+    animation: none;
+  }
+}
+
+@keyframes skeleton-loading {
+  0% {
+    background-position: 100% 50%;
+  }
+  100% {
+    background-position: 0 50%;
+  }
+}
+
+/* ---- KPI tile ---------------------------------------------------------- */
+
+.kpi-tile {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 12px 14px;
+}
+
+.kpi-tile .kpi-label {
+  font-size: 11px;
+  color: var(--ink-muted);
+  margin-bottom: 6px;
+}
+
+.kpi-tile .kpi-value {
+  font-size: 24px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.kpi-tile .kpi-delta {
+  margin-top: 4px;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+.kpi-delta.good {
+  color: var(--good);
+}
+.kpi-delta.bad {
+  color: var(--critical);
+}
+.kpi-delta.neutral {
+  color: var(--ink-muted);
+}

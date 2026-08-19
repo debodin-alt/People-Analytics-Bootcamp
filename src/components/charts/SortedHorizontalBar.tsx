@@ -1,0 +1,59 @@
+import { Bar, BarChart, CartesianGrid, Cell, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
+import { useTheme } from '../../context/ThemeContext';
+import { paletteDark, paletteLight } from '../../lib/palette';
+
+export interface HorizontalBarDatum {
+  label: string;
+  value: number;
+}
+
+interface Props {
+  data: HorizontalBarDatum[];
+  valueLabel: string;
+  formatValue?: (n: number) => string;
+  referenceValue?: number;
+  referenceLabel?: string;
+}
+
+/**
+ * Magnitude across categories — always sorted descending, bars start at
+ * zero, gridline on one axis only. Never a pie above five slices (§10.3,
+ * §10.11).
+ */
+export function SortedHorizontalBar({ data, valueLabel, formatValue, referenceValue, referenceLabel }: Props) {
+  const { theme } = useTheme();
+  const palette = theme === 'dark' ? paletteDark : paletteLight;
+  const sorted = [...data].sort((a, b) => b.value - a.value);
+  const fmt = formatValue ?? ((n: number) => n.toLocaleString());
+
+  return (
+    <ResponsiveContainer width="100%" height="100%">
+      <BarChart data={sorted} layout="vertical" margin={{ top: 4, right: 24, bottom: 4, left: 4 }}>
+        <CartesianGrid horizontal={false} stroke={palette.gridline} />
+        <XAxis type="number" tick={{ fontSize: 11, fill: palette.inkMuted }} tickFormatter={fmt} stroke={palette.gridline} />
+        <YAxis
+          type="category"
+          dataKey="label"
+          width={120}
+          tick={{ fontSize: 11 }}
+          axisLine={{ stroke: palette.gridline }}
+          tickLine={false}
+        />
+        <Tooltip formatter={(v) => [fmt(Number(v)), valueLabel]} />
+        {referenceValue !== undefined && (
+          <ReferenceLine
+            x={referenceValue}
+            stroke={palette.inkMuted}
+            strokeDasharray="3 3"
+            label={{ value: referenceLabel, position: 'insideTopRight', fontSize: 10, fill: palette.inkMuted }}
+          />
+        )}
+        <Bar dataKey="value" radius={[0, 4, 4, 0]} maxBarSize={22}>
+          {sorted.map((_, i) => (
+            <Cell key={i} fill={palette.series[0]} />
+          ))}
+        </Bar>
+      </BarChart>
+    </ResponsiveContainer>
+  );
+}
