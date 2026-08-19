@@ -17,11 +17,12 @@ export function useDataFreshness(): Freshness {
 
   useEffect(() => {
     let cancelled = false;
+    // Goes through metrics.data_freshness() rather than selecting from
+    // data_loads: the client holds no table-level read access, and the
+    // function exposes only these two fields (not file names or row counts).
     supabase
-      .from('data_loads')
-      .select('data_load_id, loaded_at')
-      .order('loaded_at', { ascending: false })
-      .limit(1)
+      .schema('metrics')
+      .rpc('data_freshness')
       .then(({ data, error }) => {
         if (cancelled) return;
         if (error) {
