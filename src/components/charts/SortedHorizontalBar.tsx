@@ -27,6 +27,12 @@ interface Props {
    * the sequence that makes the chart readable.
    */
   preserveOrder?: boolean;
+  /**
+   * Width reserved for category labels. The default suits short labels;
+   * widen it for long ones (offer decline reasons, job titles) which
+   * otherwise wrap into each other and become unreadable.
+   */
+  labelWidth?: number;
 }
 
 /**
@@ -41,6 +47,7 @@ export function SortedHorizontalBar({
   referenceValue,
   referenceLabel,
   preserveOrder = false,
+  labelWidth = 120,
 }: Props) {
   const { theme } = useTheme();
   const palette = theme === 'dark' ? paletteDark : paletteLight;
@@ -55,7 +62,7 @@ export function SortedHorizontalBar({
         <YAxis
           type="category"
           dataKey="label"
-          width={120}
+          width={labelWidth}
           tick={{ fontSize: 11 }}
           axisLine={{ stroke: palette.gridline }}
           tickLine={false}
