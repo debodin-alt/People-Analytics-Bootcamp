@@ -11,6 +11,32 @@ interface MetricFilters {
 
 type MetricState<T> = { loading: boolean; result: MetricResult<T> | null; error: string | null };
 
+/** Shape of the metrics.metric_result composite as PostgREST serialises it. */
+interface RawMetricResult {
+  status: MetricResult['status'];
+  value: unknown;
+  reason: string | null;
+  population_count: number | null;
+}
+
+/**
+ * Adapt the database's snake_case composite to the camelCase app contract
+ * in lib/types.ts. Postgres and PostgREST do not convert case, so reading
+ * `result.populationCount` straight off the response silently yields
+ * undefined — which reads as "no data" rather than as a bug.
+ */
+function toMetricResult<T>(data: unknown): MetricResult<T> | null {
+  if (!data || typeof data !== 'object') return null;
+  const raw = data as RawMetricResult;
+  return {
+    status: raw.status,
+    value: (raw.value ?? null) as T | null,
+    reason: raw.reason ?? null,
+    populationCount: raw.population_count ?? null,
+    citation: null,
+  };
+}
+
 /** Calls a metrics.* RPC that returns the typed metric_result composite. */
 export function useMetric<T = number>(rpcName: string, filters: MetricFilters = {}): MetricState<T> {
   const [state, setState] = useState<MetricState<T>>({ loading: true, result: null, error: null });
@@ -33,7 +59,7 @@ export function useMetric<T = number>(rpcName: string, filters: MetricFilters = 
           setState({ loading: false, result: null, error: error.message });
           return;
         }
-        setState({ loading: false, result: data as MetricResult<T>, error: null });
+        setState({ loading: false, result: toMetricResult<T>(data), error: null });
       });
     return () => {
       cancelled = true;
