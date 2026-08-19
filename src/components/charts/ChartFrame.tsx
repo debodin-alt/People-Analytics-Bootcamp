@@ -23,6 +23,13 @@ interface ChartFrameProps {
    * height overlaps its own labels. Roughly 16px per category.
    */
   bodyHeight?: number;
+  /**
+   * Caveat or methodology note shown under the title. Required wherever a
+   * chart could be over-read — an unadjusted pay comparison, for instance,
+   * where the caveat is part of presenting the number responsibly rather
+   * than an optional footnote.
+   */
+  note?: string;
 }
 
 export function ChartFrame({
@@ -34,10 +41,12 @@ export function ChartFrame({
   children,
   spanClass = 'span-6',
   bodyHeight,
+  note,
 }: ChartFrameProps) {
   return (
     <div className={`chart-frame ${spanClass}`}>
       <div className="chart-title">{title}</div>
+      {note && <div className="chart-note">{note}</div>}
       <div className="chart-body" style={bodyHeight ? { minHeight: bodyHeight } : undefined}>
         {status === 'loading' && <div className="chart-skeleton" aria-hidden="true" />}
         {status === 'empty' && (

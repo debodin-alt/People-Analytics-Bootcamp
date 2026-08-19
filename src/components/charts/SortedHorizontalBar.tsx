@@ -5,6 +5,13 @@ import { paletteDark, paletteLight } from '../../lib/palette';
 export interface HorizontalBarDatum {
   label: string;
   value: number;
+  /**
+   * Explicit bar colour. Used for diverging measures, where position
+   * relative to a midpoint is the point of the chart — compa-ratio around
+   * 1.00, for instance (§10.3). Omit for ordinary magnitude charts, which
+   * take the single primary series colour.
+   */
+  color?: string;
 }
 
 interface Props {
@@ -68,8 +75,8 @@ export function SortedHorizontalBar({
           />
         )}
         <Bar dataKey="value" radius={[0, 4, 4, 0]} maxBarSize={22}>
-          {sorted.map((_, i) => (
-            <Cell key={i} fill={palette.series[0]} />
+          {sorted.map((d, i) => (
+            <Cell key={i} fill={d.color ?? palette.series[0]} />
           ))}
         </Bar>
       </BarChart>

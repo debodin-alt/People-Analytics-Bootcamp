@@ -227,6 +227,13 @@ a {
   margin-bottom: 10px;
 }
 
+.chart-frame .chart-note {
+  font-size: 11px;
+  line-height: 1.4;
+  color: var(--ink-faint);
+  margin: -6px 0 10px;
+}
+
 .chart-frame .chart-body {
   flex: 1;
   /* Category charts force every axis label (interval={0}), so the body
