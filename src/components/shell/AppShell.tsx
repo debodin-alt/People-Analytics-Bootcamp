@@ -3,18 +3,22 @@ import { useTheme } from '../../context/ThemeContext';
 import { useFilters } from '../../context/FilterContext';
 import { FUNCTIONS, OFFICE_LOCATIONS, LEVEL_BANDS, TENURE_BANDS } from '../../lib/constants';
 import { useDataFreshness } from '../../lib/useDataFreshness';
+import { useSession, type Capability } from '../../context/SessionContext';
 
-const NAV_ITEMS = [
+// `requires` mirrors the route guards in App.tsx. Hiding a nav item is
+// presentation only — the measures behind each page refuse server-side
+// regardless of what is rendered here.
+const NAV_ITEMS: { to: string; label: string; requires?: Capability }[] = [
   { to: '/', label: 'Executive Overview' },
-  { to: '/workforce', label: 'Workforce' },
-  { to: '/attrition', label: 'Attrition & Retention' },
-  { to: '/compensation', label: 'Compensation' },
-  { to: '/recruiting', label: 'Recruiting' },
-  { to: '/engagement', label: 'Engagement' },
-  { to: '/talent', label: 'Talent & Performance' },
+  { to: '/workforce', label: 'Workforce', requires: 'dimension_cuts' },
+  { to: '/attrition', label: 'Attrition & Retention', requires: 'dimension_cuts' },
+  { to: '/compensation', label: 'Compensation', requires: 'compensation' },
+  { to: '/recruiting', label: 'Recruiting', requires: 'dimension_cuts' },
+  { to: '/engagement', label: 'Engagement', requires: 'dimension_cuts' },
+  { to: '/talent', label: 'Talent & Performance', requires: 'dimension_cuts' },
   { to: '/wizard', label: 'Wizard' },
   { to: '/methodology', label: 'Methodology' },
-  { to: '/admin/upload', label: 'Admin: Data Upload' },
+  { to: '/admin/upload', label: 'Admin: Data Upload', requires: 'governance' },
 ];
 
 function pageTitleFor(pathname: string): string {
@@ -30,6 +34,8 @@ export function AppShell() {
   const { filters, setFunction, setLocation, setLevelBand, setTenureBand, setComparison, clearAll } = useFilters();
   const location = useLocation();
   const freshness = useDataFreshness();
+  const { role, employeeId, can, signOut } = useSession();
+  const visibleNav = NAV_ITEMS.filter((item) => !item.requires || can(item.requires));
 
   const toggleListValue = (
     current: string[] | undefined,
@@ -52,7 +58,7 @@ export function AppShell() {
     <div className="app-shell">
       <nav className="app-nav">
         <div className="brand">Meridian</div>
-        {NAV_ITEMS.map((item) => (
+        {visibleNav.map((item) => (
           <NavLink key={item.to} to={item.to} className={({ isActive }) => (isActive ? 'active' : '')} end={item.to === '/'}>
             {item.label}
           </NavLink>
@@ -68,8 +74,17 @@ export function AppShell() {
             {freshness.status === 'ready' && `As of ${freshness.asOf} · ${freshness.dataLoadId}`}
             {freshness.status === 'error' && 'Data freshness unavailable'}
           </span>
+          <span title={employeeId ? `Linked to ${employeeId}` : 'Not linked to an employee record'}>
+            Signed in as <strong style={{ color: 'var(--ink)' }}>{role}</strong>
+          </span>
           <button onClick={toggle} aria-label="Toggle theme" style={{ background: 'none', border: '1px solid var(--border)', borderRadius: 6, padding: '4px 8px', cursor: 'pointer' }}>
             {theme === 'dark' ? '☾' : '☀'}
+          </button>
+          <button
+            onClick={signOut}
+            style={{ background: 'none', border: '1px solid var(--border)', borderRadius: 6, padding: '4px 8px', cursor: 'pointer', fontSize: 12 }}
+          >
+            Sign out
           </button>
         </div>
       </header>
