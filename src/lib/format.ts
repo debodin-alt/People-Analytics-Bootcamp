@@ -1,7 +1,13 @@
 /** Number and text formatting rules — PRD_Class2 §10.8. */
 
+/**
+ * §10.8: abbreviate ABOVE four digits — i.e. from 10,000, not from 1,000.
+ * The looser threshold rendered 3,149 annual reviews as "3K", discarding
+ * precision a reader needs at that magnitude. Counts in the thousands are
+ * still read exactly; only genuinely large numbers get abbreviated.
+ */
 export function formatCount(n: number): string {
-  if (Math.abs(n) >= 1000) return formatAbbreviated(n, 0);
+  if (Math.abs(n) >= 10_000) return formatAbbreviated(n, 0);
   return n.toLocaleString('en-US');
 }
 
