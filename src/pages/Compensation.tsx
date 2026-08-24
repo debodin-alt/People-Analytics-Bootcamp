@@ -30,6 +30,7 @@ export function Compensation() {
   const medianCompa = useMetric('median_compa_ratio', f);
   const below090 = useMetric('below_090_compa_count', f);
   const rangePen = useMetric('median_range_penetration', f);
+  const marketPosition = useMetric('median_market_position', f);
 
   const distribution = useTableRpc<{ band: string; band_order: number; employees: number }>('compa_ratio_distribution', filterParams(f));
   const byFunction = useTableRpc<CompaByDim>('compa_ratio_by_dimension', { p_dimension: 'function', ...filterParams(f) });
@@ -84,7 +85,20 @@ export function Compensation() {
         <KpiTile label="Median compa-ratio" value={displayValue(medianCompa, (v) => formatScore(v, 2))} loading={medianCompa.loading} />
         <KpiTile label="Paid below 0.90 compa" value={displayValue(below090, formatCount)} loading={below090.loading} />
         <KpiTile label="Median range penetration" value={displayValue(rangePen, formatRate)} loading={rangePen.loading} />
+        <KpiTile
+          label="Median market position"
+          value={displayValue(marketPosition, (v) => v.toFixed(2))}
+          loading={marketPosition.loading}
+        />
       </div>
+      {/* Coverage is part of the claim: a median over 30% of a population
+          is not the same statement as one over 90%, and 279 active
+          employees sit in functions the benchmark does not publish. */}
+      {marketPosition.result?.reason && (
+        <div style={{ fontSize: 11, color: 'var(--ink-faint)', margin: '0 0 14px', lineHeight: 1.5 }}>
+          <strong>Market position:</strong> {marketPosition.result.reason}
+        </div>
+      )}
 
       <div className="chart-grid">
         <ChartFrame

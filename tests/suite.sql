@@ -84,6 +84,9 @@ insert into results values
   ('metrics', 'approved not effective (PRD §8.2)', '75',
     (select reviews::text from metrics.promotion_pipeline() where outcome = 'Approved Not Effective')),
 
+  ('metrics', 'market position resolves where benchmarked (Engineering)', 'value',
+    (select status from metrics.median_market_position(array['Engineering']))),
+
   ('metrics', 'weakest universal competency (PRD §8.2 U03 @ 3.27)', 'U03 3.27',
     (select competency_id || ' ' || mean_score from metrics.competency_means('Universal') limit 1)),
 
@@ -169,6 +172,22 @@ insert into results values
             and pg_get_function_arguments(p.oid) like '%p_location%'
             and pg_get_function_arguments(p.oid) like '%p_level_band%'
             and pg_get_function_arguments(p.oid) like '%p_tenure_band%')));
+
+-- Defect: level_map mapped M8 (CEO) to Apex SVP, so an M8 in a
+-- benchmarked function would have been measured against SVP market data
+-- and reported a confident, wrong market position (measured: 1.6296).
+-- M8 sits above the top of the Apex ladder and must resolve to nothing.
+insert into results values
+  ('regression', 'M8 has no market benchmark mapping', 'false',
+    (select has_market_benchmark::text from public.level_map where meridian_career_level = 'M8')),
+  ('regression', 'M8 resolves no market position even in a benchmarked function', '<none>',
+    (select coalesce(
+       (select e.market_position_p50::text
+        from metrics.dim_employee e
+        join public.level_map lm on lm.meridian_career_level = e.career_level
+        where e.career_level = 'M8' and lm.has_market_benchmark), '<none>'))),
+  ('regression', 'market position refuses rather than falls back where unbenchmarked', 'unavailable',
+    (select status from metrics.median_market_position(array['Legal'])));
 
 -- Defect: MET-1 requires every rendered number to trace to a definition.
 insert into results values
