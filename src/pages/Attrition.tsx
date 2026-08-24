@@ -2,7 +2,7 @@ import { KpiTile } from '../components/charts/KpiTile';
 import { ChartFrame } from '../components/charts/ChartFrame';
 import { SortedHorizontalBar } from '../components/charts/SortedHorizontalBar';
 import { useFilters } from '../context/FilterContext';
-import { useMetric, useTableRpc } from '../lib/useMetric';
+import { useMetric, useTableRpc, filterParams } from '../lib/useMetric';
 import { formatCount, formatRate } from '../lib/format';
 import { displayValue } from '../lib/metricDisplay';
 
@@ -33,11 +33,11 @@ export function Attrition() {
   const involuntary = useMetric('involuntary_attrition_count_ttm', f);
   const regrettable = useMetric('regrettable_attrition_count', f);
 
-  const byFunction = useTableRpc<AttritionRow>('attrition_by_dimension', { p_dimension: 'function' });
-  const byLocation = useTableRpc<AttritionRow>('attrition_by_dimension', { p_dimension: 'office_location' });
-  const byLevelBand = useTableRpc<AttritionRow>('attrition_by_dimension', { p_dimension: 'level_band' });
-  const reasons = useTableRpc<{ reason: string; leavers: number }>('attrition_reasons');
-  const hazard = useTableRpc<{ band: string; band_order: number; leavers: number }>('tenure_hazard');
+  const byFunction = useTableRpc<AttritionRow>('attrition_by_dimension', { p_dimension: 'function', ...filterParams(f) });
+  const byLocation = useTableRpc<AttritionRow>('attrition_by_dimension', { p_dimension: 'office_location', ...filterParams(f) });
+  const byLevelBand = useTableRpc<AttritionRow>('attrition_by_dimension', { p_dimension: 'level_band', ...filterParams(f) });
+  const reasons = useTableRpc<{ reason: string; leavers: number }>('attrition_reasons', filterParams(f));
+  const hazard = useTableRpc<{ band: string; band_order: number; leavers: number }>('tenure_hazard', filterParams(f));
 
   const chartState = (s: { loading: boolean; data: unknown[] | null; error: string | null }) =>
     s.loading ? 'loading' : s.error ? 'error' : s.data && s.data.length > 0 ? 'ready' : 'empty';

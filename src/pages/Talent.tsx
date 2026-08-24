@@ -2,7 +2,7 @@ import { KpiTile } from '../components/charts/KpiTile';
 import { ChartFrame } from '../components/charts/ChartFrame';
 import { SortedHorizontalBar } from '../components/charts/SortedHorizontalBar';
 import { useFilters } from '../context/FilterContext';
-import { useMetric, useTableRpc } from '../lib/useMetric';
+import { useMetric, useTableRpc, filterParams } from '../lib/useMetric';
 import { formatCount, formatRate } from '../lib/format';
 import { displayValue } from '../lib/metricDisplay';
 import { useTheme } from '../context/ThemeContext';
@@ -29,17 +29,17 @@ export function Talent() {
     reviews: number;
     pct: number | null;
     suppressed: boolean;
-  }>('rating_distribution');
-  const pipeline = useTableRpc<{ outcome: string; reviews: number }>('promotion_pipeline');
+  }>('rating_distribution', filterParams(f));
+  const pipeline = useTableRpc<{ outcome: string; reviews: number }>('promotion_pipeline', filterParams(f));
   const universal = useTableRpc<{ competency_id: string; competency_name: string; mean_score: number; scores: number }>(
     'competency_means',
-    { p_competency_type: 'Universal' },
+    { p_competency_type: 'Universal', ...filterParams(f) },
   );
   const leadership = useTableRpc<{ competency_id: string; competency_name: string; mean_score: number; scores: number }>(
     'competency_means',
-    { p_competency_type: 'Leadership' },
+    { p_competency_type: 'Leadership', ...filterParams(f) },
   );
-  const nineBox = useTableRpc<{ placement: string; employees: number }>('nine_box_distribution');
+  const nineBox = useTableRpc<{ placement: string; employees: number }>('nine_box_distribution', filterParams(f));
 
   const chartState = (s: { loading: boolean; data: unknown[] | null; error: string | null }) =>
     s.loading ? 'loading' : s.error ? 'error' : s.data && s.data.length > 0 ? 'ready' : 'empty';

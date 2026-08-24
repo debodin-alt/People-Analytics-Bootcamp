@@ -2,7 +2,7 @@ import { KpiTile } from '../components/charts/KpiTile';
 import { ChartFrame } from '../components/charts/ChartFrame';
 import { SortedHorizontalBar } from '../components/charts/SortedHorizontalBar';
 import { useFilters } from '../context/FilterContext';
-import { useMetric, useTableRpc } from '../lib/useMetric';
+import { useMetric, useTableRpc, filterParams } from '../lib/useMetric';
 import { formatCount, formatRate } from '../lib/format';
 import { displayValue } from '../lib/metricDisplay';
 import { useTheme } from '../context/ThemeContext';
@@ -31,15 +31,15 @@ export function Recruiting() {
     stage_name: string;
     candidates: number;
     conversion_from_prev: number | null;
-  }>('funnel_with_conversion', f.function || f.location ? { p_function: f.function ?? null, p_location: f.location ?? null } : {});
-  const statuses = useTableRpc<{ outcome: string; requisitions: number }>('requisition_status_counts');
-  const aging = useTableRpc<{ band: string; band_order: number; requisitions: number }>('open_requisition_aging');
+  }>('funnel_with_conversion', filterParams(f));
+  const statuses = useTableRpc<{ outcome: string; requisitions: number }>('requisition_status_counts', filterParams(f));
+  const aging = useTableRpc<{ band: string; band_order: number; requisitions: number }>('open_requisition_aging', filterParams(f));
   const ttfByFunction = useTableRpc<{ label: string; median_ttf: number; reqs_filled: number }>(
     'time_to_fill_by_dimension',
-    { p_dimension: 'function' },
+    { p_dimension: 'function', ...filterParams(f) },
   );
-  const sources = useTableRpc<{ source: string; applications: number }>('applications_by_source');
-  const declines = useTableRpc<{ reason: string; declines: number }>('offer_decline_reasons');
+  const sources = useTableRpc<{ source: string; applications: number }>('applications_by_source', filterParams(f));
+  const declines = useTableRpc<{ reason: string; declines: number }>('offer_decline_reasons', filterParams(f));
 
   const chartState = (s: { loading: boolean; data: unknown[] | null; error: string | null }) =>
     s.loading ? 'loading' : s.error ? 'error' : s.data && s.data.length > 0 ? 'ready' : 'empty';

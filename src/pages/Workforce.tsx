@@ -3,7 +3,7 @@ import { ChartFrame } from '../components/charts/ChartFrame';
 import { SortedHorizontalBar } from '../components/charts/SortedHorizontalBar';
 import { StackedBar } from '../components/charts/StackedBar';
 import { useFilters } from '../context/FilterContext';
-import { useMetric, useTableRpc } from '../lib/useMetric';
+import { useMetric, useTableRpc, filterParams } from '../lib/useMetric';
 import { formatCount, formatScore } from '../lib/format';
 import { displayValue } from '../lib/metricDisplay';
 import { TENURE_BANDS } from '../lib/constants';
@@ -29,15 +29,15 @@ export function Workforce() {
   const medianSpan = useMetric('median_span_of_control', f);
   const firstYear = useMetric('first_year_population', f);
 
-  const byFunction = useTableRpc<DimensionRow>('headcount_by_dimension', { p_dimension: 'function' });
-  const byTenure = useTableRpc<DimensionRow>('headcount_by_dimension', { p_dimension: 'tenure_band' });
-  const byLocation = useTableRpc<DimensionRow>('headcount_by_dimension', { p_dimension: 'office_location' });
-  const byArrangement = useTableRpc<DimensionRow>('headcount_by_dimension', { p_dimension: 'work_arrangement' });
-  const byLevelBand = useTableRpc<DimensionRow>('headcount_by_dimension', { p_dimension: 'level_band' });
-  const span = useTableRpc<{ band: string; band_order: number; managers: number }>('span_of_control_distribution');
+  const byFunction = useTableRpc<DimensionRow>('headcount_by_dimension', { p_dimension: 'function', ...filterParams(f) });
+  const byTenure = useTableRpc<DimensionRow>('headcount_by_dimension', { p_dimension: 'tenure_band', ...filterParams(f) });
+  const byLocation = useTableRpc<DimensionRow>('headcount_by_dimension', { p_dimension: 'office_location', ...filterParams(f) });
+  const byArrangement = useTableRpc<DimensionRow>('headcount_by_dimension', { p_dimension: 'work_arrangement', ...filterParams(f) });
+  const byLevelBand = useTableRpc<DimensionRow>('headcount_by_dimension', { p_dimension: 'level_band', ...filterParams(f) });
+  const span = useTableRpc<{ band: string; band_order: number; managers: number }>('span_of_control_distribution', filterParams(f));
   const flows = useTableRpc<{ period: string; hires: number; exits: number; net_change: number }>(
     'monthly_hires_exits',
-    { p_months: 12 },
+    { p_months: 12, ...filterParams(f) },
   );
 
   const chartState = (s: { loading: boolean; data: unknown[] | null; error: string | null }) =>

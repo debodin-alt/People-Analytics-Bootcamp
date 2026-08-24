@@ -4,7 +4,7 @@ import { TrendLine } from '../components/charts/TrendLine';
 import { SortedHorizontalBar } from '../components/charts/SortedHorizontalBar';
 import { StackedBar } from '../components/charts/StackedBar';
 import { useFilters } from '../context/FilterContext';
-import { useMetric, useTableRpc } from '../lib/useMetric';
+import { useMetric, useTableRpc, filterParams } from '../lib/useMetric';
 import { formatCount, formatRate, formatScore } from '../lib/format';
 import { displayValue } from '../lib/metricDisplay';
 
@@ -25,17 +25,26 @@ export function ExecutiveOverview() {
   const compaRatio = useMetric('median_compa_ratio', metricFilters);
   const flightRisk = useMetric('elevated_flight_risk_count', metricFilters);
 
-  const trend = useTableRpc<{ period: string; headcount: number }>('headcount_trend', { p_months: 12 });
+  const trend = useTableRpc<{ period: string; headcount: number }>('headcount_trend', { p_months: 12, ...filterParams(metricFilters) });
   const composition = useTableRpc<{ function: string; headcount: number }>('composition_by_function', {
     p_status: 'Active',
+    ...filterParams(metricFilters),
   });
-  const attritionByType = useTableRpc<{ voluntary: number; involuntary: number }>('attrition_by_type_ttm');
-  const funnel = useTableRpc<{ stage_order: number; stage_name: string; candidate_count: number }>(
-    'recruiting_funnel_stages',
+  const attritionByType = useTableRpc<{ voluntary: number; involuntary: number }>('attrition_by_type_ttm', filterParams(metricFilters));
+  const funnel = useTableRpc<{ stage_order: number; stage_name: string; candidates: number }>(
+    'funnel_with_conversion',
+    filterParams(metricFilters),
   );
   const engagementByCategory = useTableRpc<{ category: string; mean_score: number; n: number }>(
     'engagement_by_category',
+    filterParams(metricFilters),
   );
+
+  // Same helper the other pages use: an errored measure must render as an
+  // error, not as "empty". headcount_trend deliberately refuses a tenure
+  // filter, and that refusal is only useful if the reason reaches the user.
+  const chartState = (s: { loading: boolean; data: unknown[] | null; error: string | null }) =>
+    s.loading ? 'loading' : s.error ? 'error' : s.data && s.data.length > 0 ? 'ready' : 'empty';
 
   return (
     <div>
@@ -51,7 +60,8 @@ export function ExecutiveOverview() {
       <div className="chart-grid">
         <ChartFrame
           title="Headcount trend"
-          status={trend.loading ? 'loading' : trend.data && trend.data.length > 0 ? 'ready' : 'empty'}
+          status={chartState(trend)}
+          errorMessage={trend.error ?? undefined}
           spanClass="span-6"
         >
           {trend.data && <TrendLine data={trend.data.map((d) => ({ period: d.period, value: d.headcount }))} valueLabel="Headcount" />}
@@ -59,7 +69,8 @@ export function ExecutiveOverview() {
 
         <ChartFrame
           title="Composition by function"
-          status={composition.loading ? 'loading' : composition.data && composition.data.length > 0 ? 'ready' : 'empty'}
+          status={chartState(composition)}
+          errorMessage={composition.error ?? undefined}
           spanClass="span-6"
           bodyHeight={280}
         >
@@ -73,7 +84,8 @@ export function ExecutiveOverview() {
 
         <ChartFrame
           title="Attrition by type (TTM)"
-          status={attritionByType.loading ? 'loading' : attritionByType.data && attritionByType.data.length > 0 ? 'ready' : 'empty'}
+          status={chartState(attritionByType)}
+          errorMessage={attritionByType.error ?? undefined}
           spanClass="span-4"
         >
           {attritionByType.data && (
@@ -90,29 +102,36 @@ export function ExecutiveOverview() {
 
         <ChartFrame
           title="Recruiting funnel"
-          status={funnel.loading ? 'loading' : funnel.data && funnel.data.length > 0 ? 'ready' : 'empty'}
+          status={chartState(funnel)}
+          errorMessage={funnel.error ?? undefined}
           spanClass="span-4"
+          bodyHeight={260}
         >
           {funnel.data && (
             <SortedHorizontalBar
               data={[...funnel.data]
                 .sort((a, b) => a.stage_order - b.stage_order)
-                .map((d) => ({ label: d.stage_name, value: d.candidate_count }))}
+                .map((d) => ({ label: d.stage_name, value: d.candidates }))}
               valueLabel="Candidates"
+              preserveOrder
             />
           )}
         </ChartFrame>
 
         <ChartFrame
           title="Engagement by category"
-          status={engagementByCategory.loading ? 'loading' : engagementByCategory.data && engagementByCategory.data.length > 0 ? 'ready' : 'empty'}
+          status={chartState(engagementByCategory)}
+          errorMessage={engagementByCategory.error ?? undefined}
           spanClass="span-4"
+          bodyHeight={260}
         >
           {engagementByCategory.data && (
             <SortedHorizontalBar
               data={engagementByCategory.data.map((d) => ({ label: d.category, value: d.mean_score }))}
               valueLabel="Mean score"
               formatValue={(v) => v.toFixed(2)}
+              domain={[0, 5]}
+              labelWidth={165}
             />
           )}
         </ChartFrame>

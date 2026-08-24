@@ -2,7 +2,7 @@ import { KpiTile } from '../components/charts/KpiTile';
 import { ChartFrame } from '../components/charts/ChartFrame';
 import { SortedHorizontalBar } from '../components/charts/SortedHorizontalBar';
 import { useFilters } from '../context/FilterContext';
-import { useMetric, useTableRpc } from '../lib/useMetric';
+import { useMetric, useTableRpc, filterParams } from '../lib/useMetric';
 import { formatCount, formatRate, formatScore } from '../lib/format';
 import { displayValue } from '../lib/metricDisplay';
 import { useTheme } from '../context/ThemeContext';
@@ -31,12 +31,13 @@ export function Compensation() {
   const below090 = useMetric('below_090_compa_count', f);
   const rangePen = useMetric('median_range_penetration', f);
 
-  const distribution = useTableRpc<{ band: string; band_order: number; employees: number }>('compa_ratio_distribution');
-  const byFunction = useTableRpc<CompaByDim>('compa_ratio_by_dimension', { p_dimension: 'function' });
-  const byLevelBand = useTableRpc<CompaByDim>('compa_ratio_by_dimension', { p_dimension: 'level_band' });
-  const byLocation = useTableRpc<CompaByDim>('compa_ratio_by_dimension', { p_dimension: 'office_location' });
+  const distribution = useTableRpc<{ band: string; band_order: number; employees: number }>('compa_ratio_distribution', filterParams(f));
+  const byFunction = useTableRpc<CompaByDim>('compa_ratio_by_dimension', { p_dimension: 'function', ...filterParams(f) });
+  const byLevelBand = useTableRpc<CompaByDim>('compa_ratio_by_dimension', { p_dimension: 'level_band', ...filterParams(f) });
+  const byLocation = useTableRpc<CompaByDim>('compa_ratio_by_dimension', { p_dimension: 'office_location', ...filterParams(f) });
   const byGender = useTableRpc<{ gender: string; median_compa: number | null; employees: number; suppressed: boolean }>(
     'pay_position_by_gender',
+    filterParams(f),
   );
 
   const chartState = (s: { loading: boolean; data: unknown[] | null; error: string | null }) =>

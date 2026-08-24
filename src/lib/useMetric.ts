@@ -2,11 +2,26 @@ import { useEffect, useState } from 'react';
 import { supabase } from './supabase';
 import type { MetricResult } from './types';
 
-interface MetricFilters {
+export interface MetricFilters {
   function?: string[];
   location?: string[];
   levelBand?: string[];
   tenureBand?: string[];
+}
+
+/**
+ * Translates the UI filter context into the standard 4-argument shape
+ * every measure accepts (SEM-3). Chart calls spread this alongside their
+ * own arguments, so adding a filter to the bar cannot leave a chart
+ * showing a different population from the tiles beside it.
+ */
+export function filterParams(filters: MetricFilters): Record<string, string[] | null> {
+  return {
+    p_function: filters.function?.length ? filters.function : null,
+    p_location: filters.location?.length ? filters.location : null,
+    p_level_band: filters.levelBand?.length ? filters.levelBand : null,
+    p_tenure_band: filters.tenureBand?.length ? filters.tenureBand : null,
+  };
 }
 
 type MetricState<T> = { loading: boolean; result: MetricResult<T> | null; error: string | null };

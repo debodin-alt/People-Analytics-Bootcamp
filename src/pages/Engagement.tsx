@@ -2,7 +2,7 @@ import { KpiTile } from '../components/charts/KpiTile';
 import { ChartFrame } from '../components/charts/ChartFrame';
 import { SortedHorizontalBar } from '../components/charts/SortedHorizontalBar';
 import { useFilters } from '../context/FilterContext';
-import { useMetric, useTableRpc } from '../lib/useMetric';
+import { useMetric, useTableRpc, filterParams } from '../lib/useMetric';
 import { formatRate, formatScore } from '../lib/format';
 import { displayValue } from '../lib/metricDisplay';
 import { useTheme } from '../context/ThemeContext';
@@ -42,12 +42,13 @@ export function Engagement() {
   const employeeMean = useMetric('engagement_employee_mean', f);
   const participation = useMetric('survey_participation_rate', f);
 
-  const byCategory = useTableRpc<{ category: string; mean_score: number; n: number }>('engagement_by_category');
-  const byFunction = useTableRpc<CohortRow>('engagement_by_cohort', { p_dimension: 'function' });
-  const byLevelBand = useTableRpc<CohortRow>('engagement_by_cohort', { p_dimension: 'level_band' });
-  const byTenure = useTableRpc<CohortRow>('engagement_by_cohort', { p_dimension: 'tenure_band' });
+  const byCategory = useTableRpc<{ category: string; mean_score: number; n: number }>('engagement_by_category', filterParams(f));
+  const byFunction = useTableRpc<CohortRow>('engagement_by_cohort', { p_dimension: 'function', ...filterParams(f) });
+  const byLevelBand = useTableRpc<CohortRow>('engagement_by_cohort', { p_dimension: 'level_band', ...filterParams(f) });
+  const byTenure = useTableRpc<CohortRow>('engagement_by_cohort', { p_dimension: 'tenure_band', ...filterParams(f) });
   const themes = useTableRpc<{ theme_code: string; mentions: number; suppressed: boolean }>(
     'engagement_theme_frequency',
+    filterParams(f),
   );
 
   const chartState = (s: { loading: boolean; data: unknown[] | null; error: string | null }) =>
