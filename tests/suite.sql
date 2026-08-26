@@ -28,9 +28,25 @@ create temp table results (
 
 -- Impersonate the configured admin. Looked up rather than hardcoded so
 -- the suite runs against any environment.
+--
+-- The chosen account is pinned in a temp table because the role-permission
+-- sections below re-grade this same user to manager and then viewer. They
+-- used to find it again with `select auth_user_id from public.app_users
+-- limit 1`, which was only ever correct while the table held exactly one
+-- row: the moment a second account existed, the unordered LIMIT could
+-- re-grade a different user, leaving the impersonated one still admin and
+-- the viewer assertions silently testing the wrong thing. Any real
+-- deployment has many accounts, so the fixture must name its subject.
+create temp table subject on commit drop as
+select auth_user_id
+from public.app_users
+where app_role = 'admin' and is_active
+order by auth_user_id
+limit 1;
+
 select set_config(
   'request.jwt.claims',
-  json_build_object('sub', (select auth_user_id from public.app_users where app_role = 'admin' and is_active limit 1))::text,
+  json_build_object('sub', (select auth_user_id from subject))::text,
   true
 );
 
@@ -165,9 +181,14 @@ insert into results values
      from pg_proc p join pg_namespace n on n.oid = p.pronamespace
      where n.nspname = 'metrics'
        and pg_get_function_result(p.oid) like 'TABLE%'
-       and p.proname not in ('current_session_context','data_freshness','data_vintage',
-                             'drill_hierarchies','metric_catalog','visible_employee_ids',
-                             'recruiting_funnel_stages')
+       -- Scope to actual measures by asking the catalog rather than
+       -- restating its exclusion list here. The hand-copied version of
+       -- this list drifted the moment a metadata function was added, and
+       -- a test that fails for the wrong reason gets muted rather than read.
+       and p.proname in (select measure from metrics.metric_catalog())
+       -- The one real exception: the funnel is a fixed stage sequence, not
+       -- a filterable population.
+       and p.proname <> 'recruiting_funnel_stages'
        and not (pg_get_function_arguments(p.oid) like '%p_function%'
             and pg_get_function_arguments(p.oid) like '%p_location%'
             and pg_get_function_arguments(p.oid) like '%p_level_band%'
@@ -253,7 +274,7 @@ insert into results values
 
 -- MANAGER: company aggregates yes, compensation no, own tree only.
 update public.app_users set app_role = 'manager', employee_id = 'E10022'
-where auth_user_id = (select auth_user_id from public.app_users limit 1);
+where auth_user_id = (select auth_user_id from subject);
 
 insert into results values
   ('roles', 'manager sees company headcount', '820',
@@ -267,7 +288,7 @@ insert into results values
 
 -- VIEWER: headline numbers only.
 update public.app_users set app_role = 'viewer', employee_id = 'E10500'
-where auth_user_id = (select auth_user_id from public.app_users limit 1);
+where auth_user_id = (select auth_user_id from subject);
 
 insert into results values
   ('roles', 'viewer sees company headcount', '820',
@@ -278,7 +299,9 @@ insert into results values
     (select count(*)::text from metrics.visible_employee_ids()));
 
 do $$
-declare v_refused text := 'false';
+declare
+  v_refused text := 'false';
+  v_measure text;
 begin
   begin
     perform * from metrics.headcount_by_dimension('function');
@@ -286,11 +309,44 @@ begin
     v_refused := 'true';
   end;
   insert into results values ('roles', 'viewer refused dimension cuts', 'true', v_refused);
+
+  -- Every dimensional measure must refuse, not just headcount_by_dimension.
+  --
+  -- Pointing the Wizard at the semantic layer as a viewer found six that
+  -- answered: composition_by_function, attrition_by_dimension,
+  -- span_of_control_distribution, engagement_by_cohort,
+  -- time_to_fill_by_dimension and applications_by_source. Each was reachable
+  -- over PostgREST by any authenticated user; only the UI was hiding them.
+  -- Asserted per measure rather than in aggregate so a future regression
+  -- names the measure that reopened.
+  for v_measure in
+    select unnest(array['composition_by_function','attrition_by_dimension',
+                        'span_of_control_distribution','engagement_by_cohort',
+                        'time_to_fill_by_dimension','applications_by_source',
+                        'engagement_by_category'])
+  loop
+    v_refused := 'false';
+    begin
+      case v_measure
+        when 'attrition_by_dimension' then perform * from metrics.attrition_by_dimension('function');
+        when 'engagement_by_cohort'   then perform * from metrics.engagement_by_cohort('function');
+        when 'time_to_fill_by_dimension' then perform * from metrics.time_to_fill_by_dimension('function');
+        when 'composition_by_function' then perform * from metrics.composition_by_function();
+        when 'span_of_control_distribution' then perform * from metrics.span_of_control_distribution();
+        when 'applications_by_source' then perform * from metrics.applications_by_source();
+        when 'engagement_by_category' then perform * from metrics.engagement_by_category();
+      end case;
+    exception when others then
+      v_refused := 'true';
+    end;
+    insert into results values
+      ('roles', 'viewer refused ' || v_measure, 'true', v_refused);
+  end loop;
 end $$;
 
 -- NO ROLE: absence must deny, not fall back to a default.
 update public.app_users set is_active = false
-where auth_user_id = (select auth_user_id from public.app_users limit 1);
+where auth_user_id = (select auth_user_id from subject);
 
 insert into results values
   ('roles', 'deactivated account has no role', 'true',
@@ -308,7 +364,7 @@ insert into results values
 -- ---------------------------------------------------------------------
 
 update public.app_users set is_active = true, app_role = 'admin', employee_id = 'E10001'
-where auth_user_id = (select auth_user_id from public.app_users limit 1);
+where auth_user_id = (select auth_user_id from subject);
 
 do $$
 declare v_email text; v_after text;
@@ -318,10 +374,51 @@ begin
 
   perform public.grant_app_access(v_email, 'executive');  -- role only, no employee_id
   select employee_id into v_after from public.app_users
-  where auth_user_id = (select auth_user_id from public.app_users limit 1);
+  where auth_user_id = (select auth_user_id from subject);
 
   insert into results values
     ('regression', 'role-only re-grant preserves employee mapping', 'E10001', coalesce(v_after, '<WIPED>'));
+end $$;
+
+-- ---------------------------------------------------------------------
+-- Wizard tool layer
+--
+-- The Wizard composes filters from dimension_values. If that vocabulary
+-- is wrong, the model filters on a value nothing matches and answers
+-- confidently about an empty population — the worst failure this platform
+-- has, because it looks exactly like a real answer.
+-- ---------------------------------------------------------------------
+
+insert into results values
+  ('wizard', 'function vocabulary covers the active population', '820',
+    (select sum(employee_count)::text from metrics.dimension_values('function'))),
+
+  ('wizard', 'location vocabulary covers the active population', '820',
+    (select sum(employee_count)::text from metrics.dimension_values('office_location'))),
+
+  -- Ordinal dimensions must come back in sequence, not alphabetically and
+  -- not by size. A tenure profile sorted by magnitude is unreadable, and
+  -- the Wizard charts these without re-sorting.
+  ('wizard', 'tenure_band returns in ordinal sequence', '<1 year|1-3 years|3-5 years|5-8 years|8+ years',
+    (select string_agg(value, '|' order by ord)
+     from (select value, row_number() over () as ord from metrics.dimension_values('tenure_band')) t)),
+
+  ('wizard', 'level_band returns in ordinal sequence',
+    'Entry / Mid IC|Senior IC|Staff+ IC|First-Line Manager|Sr Manager|Director|VP+',
+    (select string_agg(value, '|' order by ord)
+     from (select value, row_number() over () as ord from metrics.dimension_values('level_band')) t));
+
+-- An unknown dimension must raise, not return empty. Empty would let a
+-- typo silently narrow the vocabulary the model sees, and the Wizard would
+-- then filter on values it believes do not exist.
+do $$
+begin
+  perform * from metrics.dimension_values('not_a_dimension');
+  insert into results values
+    ('wizard', 'unknown dimension raises', 'raised', 'returned quietly');
+exception when others then
+  insert into results values
+    ('wizard', 'unknown dimension raises', 'raised', 'raised');
 end $$;
 
 -- ---------------------------------------------------------------------
