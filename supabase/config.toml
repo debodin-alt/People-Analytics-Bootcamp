@@ -412,3 +412,11 @@ enabled = true
 # declarative_schema_path = "./database"
 # JSON string passed through to pg-delta SQL formatting.
 # format_options = "{\"keywordCase\":\"upper\",\"indent\":2,\"maxWidth\":80,\"commaStyle\":\"trailing\"}"
+
+[functions.wizard]
+# JWT verification stays ON. It is the mechanism the Wizard's whole
+# security model rests on: the function has no service-role key, so an
+# unauthenticated caller reaching it would simply get nothing — but
+# rejecting them at the edge is cheaper than letting them burn an LLM call
+# to find that out.
+verify_jwt = true

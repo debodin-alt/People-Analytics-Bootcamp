@@ -102,7 +102,18 @@ export function App() {
             </RequireCapability>
           }
         />
-        <Route path="wizard" element={<Wizard />} />
+        {/* The Wizard inherits every capability gate at the measure level,
+            so this guard is not what keeps it safe — it only stops a role
+            with no aggregate access at all from reaching a chat box that
+            could answer nothing. */}
+        <Route
+          path="wizard"
+          element={
+            <RequireCapability capability="company_aggregates">
+              <Wizard />
+            </RequireCapability>
+          }
+        />
         <Route path="methodology" element={<Methodology />} />
         <Route
           path="admin/upload"

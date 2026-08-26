@@ -141,7 +141,9 @@ export function Methodology() {
           <li>
             <strong>Not yet addressed:</strong> differencing. Someone patient can still narrow successive aggregate
             queries to infer an individual. Minimum cell size does not prevent this, and no query-history-aware
-            suppression exists yet.
+            suppression exists yet. The Wizard lowers the effort involved, since asking is cheaper than clicking — it
+            is instructed not to assist with it, but an instruction is a deterrent, not a control. A real control is
+            query-log auditing plus a per-session limit on how finely one person may re-cut the same population.
           </li>
         </ul>
       </Section>
