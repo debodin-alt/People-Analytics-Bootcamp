@@ -194,6 +194,9 @@ Deno.serve(async (req: Request) => {
       tools: buildTools(measures),
       execute: buildExecutor(db, measures, refusedMeasures),
       maxIterations: MAX_ITERATIONS,
+      // Wall-clock budget for the whole loop. Tunable so it can be lowered
+      // to exercise the deadline path without waiting out the real one.
+      deadlineMs: Number(Deno.env.get('WIZARD_DEADLINE_MS') ?? '') || undefined,
     });
 
     const parsed = parseWizardResponse(result.text);

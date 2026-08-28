@@ -32,6 +32,46 @@ import Anthropic from 'npm:@anthropic-ai/sdk@0.120.0';
 /** Ceiling on a single model round trip. */
 const REQUEST_TIMEOUT_MS = 60_000;
 
+/** Ceiling on the whole tool loop, across every round trip. */
+const DEFAULT_DEADLINE_MS = 150_000;
+
+/**
+ * The answer given when the loop runs out of wall clock.
+ *
+ * Deliberately shaped like a refusal rather than an error: the user asked
+ * something reasonable and the system could not finish in time, which is a
+ * fact about the system, not a fault in the question. Naming the measures
+ * that did complete gives them something to narrow towards.
+ */
+function outOfTime(
+  toolCalls: ToolCallRecord[],
+  inputTokens: number,
+  outputTokens: number,
+  servedBy: string,
+  iterationMs?: number[],
+): LlmRunResult {
+  const ran = [...new Set(toolCalls.filter((c) => c.ok).map((c) => c.name))];
+  return {
+    text: JSON.stringify({
+      answer: '',
+      citedMeasures: [],
+      citedTables: [],
+      refused: {
+        reason:
+          'That took longer than I can wait for. Try asking about one thing at a time — ' +
+          'a narrower question usually needs a single measure and returns quickly.' +
+          (ran.length ? ` I did get as far as running: ${ran.join(', ')}.` : ''),
+      },
+    }),
+    toolCalls,
+    stopReason: 'deadline_exceeded',
+    usage: { inputTokens, outputTokens },
+    servedBy,
+    iterations: iterationMs?.length,
+    iterationMs,
+  };
+}
+
 /** A provider-neutral tool: JSON Schema in, JSON out. */
 export interface ToolSpec {
   name: string;
@@ -80,6 +120,11 @@ export interface LlmRunResult {
 }
 
 export interface LlmRunRequest {
+  /** Wall-clock ceiling for the whole tool loop. Without it, maxIterations
+   *  slow-but-not-timing-out round trips stack: six iterations at the 60s
+   *  per-request ceiling is a six-minute request. Reaching this returns a
+   *  partial, honest answer rather than continuing to spend the user's wait. */
+  deadlineMs?: number;
   system: string;
   messages: ChatTurn[];
   tools: ToolSpec[];
@@ -126,7 +171,16 @@ export class ClaudeProvider implements LlmProvider {
   #effort: string;
 
   constructor(opts: { apiKey: string; model?: string; effort?: string }) {
-    this.#client = new Anthropic({ apiKey: opts.apiKey });
+    this.#client = new Anthropic({
+      apiKey: opts.apiKey,
+      // The SDK's default timeout is ten minutes, which in an interactive
+      // chat is indistinguishable from a hang. Match the Gemini provider's
+      // ceiling. maxRetries is the SDK's own backoff over 408/409/429/5xx
+      // and connection errors — the same protection hand-rolled around
+      // fetch() on the Gemini side, already built here.
+      timeout: REQUEST_TIMEOUT_MS,
+      maxRetries: 2,
+    });
     this.#model = opts.model ?? 'claude-opus-5';
     // `high` is the API default. `medium` is set here because this is an
     // interactive chat where a several-second wait is felt, and on Opus 5
@@ -172,7 +226,12 @@ export class ClaudeProvider implements LlmProvider {
     let inputTokens = 0;
     let outputTokens = 0;
 
+    const deadline = Date.now() + (req.deadlineMs ?? DEFAULT_DEADLINE_MS);
+
     for (let i = 0; i < req.maxIterations; i++) {
+      if (Date.now() > deadline) {
+        return outOfTime(toolCalls, inputTokens, outputTokens, servedBy);
+      }
       const response = await this.#send({
         model: this.#model,
         max_tokens: 8000,
@@ -418,7 +477,12 @@ export class GeminiProvider implements LlmProvider {
     let inputTokens = 0;
     let outputTokens = 0;
 
+    const deadline = Date.now() + (req.deadlineMs ?? DEFAULT_DEADLINE_MS);
+
     for (let i = 0; i < req.maxIterations; i++) {
+      if (Date.now() > deadline) {
+        return outOfTime(toolCalls, inputTokens, outputTokens, this.#model, iterationMs);
+      }
       const started = Date.now();
       const response = await this.#generate({
         contents,

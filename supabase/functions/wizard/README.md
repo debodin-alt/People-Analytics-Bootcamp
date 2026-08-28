@@ -34,6 +34,7 @@ they do not need to be set.
 | `ANTHROPIC_API_KEY` | — | Required for the Claude provider. |
 | `WIZARD_PROVIDER` | whichever key is set, else `claude` | `gemini`, `claude`, or `azure-openai`. Set it explicitly only if both keys are present. |
 | `WIZARD_MODEL` | `gemini-3.7-flash` / `claude-opus-5` | Model id. Provider-specific — clear it when switching providers. Currently set to `gemini-3.6-flash`: as of 2026-08-25 `gemini-3.7-flash` returns 503 "high demand" after ~100s. Worth retrying periodically. |
+| `WIZARD_DEADLINE_MS` | `150000` | Wall-clock budget for the whole tool loop. On expiry the Wizard returns a refusal naming the measures that did complete, rather than spending more of the user's wait. |
 | `WIZARD_EFFORT` | `medium` | Claude only. `low`…`max`. The first knob to reach for if answers look shallow, ahead of any prompt change. |
 
 Both providers run **stateless**: history is passed explicitly on every
@@ -81,6 +82,27 @@ Exercised end-to-end against the live project under real signed-in sessions:
 Citations are filtered to measures that actually returned data: a run where
 five measures were called and four were refused cites only the one that
 answered.
+
+## Latency and its bounds
+
+Measured on the live project: a single-measure question runs ~15s; a broad
+one ("how are we doing on hiring?") fans out to 5–7 measures over 2–3 model
+round trips and runs 20–45s. The same question has also been seen at 95s —
+that variance is upstream at Google, not in this loop, which batches tool
+calls correctly. `gemini-2.5-flash` is no faster than `3.6` on the same
+question, so the model is not the lever.
+
+Three bounds keep a slow request from becoming an apparently dead one:
+
+- **60s per model round trip**, with two retries on 429/503/500 and
+  exponential backoff. Applies to both providers — the Claude client is
+  constructed with an explicit `timeout`, because the SDK's default is ten
+  minutes, which in a chat is indistinguishable from a hang.
+- **150s for the whole loop** (`WIZARD_DEADLINE_MS`), so several
+  slow-but-not-timing-out iterations cannot stack into a multi-minute
+  request. Exceeding it returns a refusal naming the measures that did run.
+- **A visible clock in the UI**, because a wait nobody can see the end of
+  gets reloaded, which throws the work away and starts it again.
 
 ## What this does not defend against
 
