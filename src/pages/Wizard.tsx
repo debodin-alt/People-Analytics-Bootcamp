@@ -140,11 +140,7 @@ export function Wizard() {
         {messages.map((m, i) => (
           <Turn key={i} message={m} />
         ))}
-        {busy && (
-          <div className="wizard-turn assistant">
-            <div className="wizard-bubble thinking">Querying the semantic layer…</div>
-          </div>
-        )}
+        {busy && <Thinking />}
         <div ref={endRef} />
       </div>
 
@@ -166,6 +162,44 @@ export function Wizard() {
           Ask
         </button>
       </form>
+    </div>
+  );
+}
+
+/**
+ * A live wait indicator.
+ *
+ * A broad question ("how are we doing on hiring?") fans out to seven
+ * measures across three model round trips, and upstream latency varies
+ * enormously — the same question has been measured at 22s and at 95s. A
+ * static "Querying…" is indistinguishable from a hung page for the whole
+ * of that, and the natural response is to reload, which throws away the
+ * work and starts the wait again.
+ *
+ * So show the clock. The number moving is what says the thing is alive,
+ * and the note after fifteen seconds explains the wait rather than leaving
+ * the user to invent a worse explanation for it.
+ */
+function Thinking() {
+  const [elapsed, setElapsed] = useState(0);
+
+  useEffect(() => {
+    const started = Date.now();
+    const id = setInterval(() => setElapsed(Math.round((Date.now() - started) / 1000)), 250);
+    return () => clearInterval(id);
+  }, []);
+
+  return (
+    <div className="wizard-turn assistant">
+      <div className="wizard-bubble thinking">
+        <span className="wizard-pulse" />
+        Querying the semantic layer… {elapsed}s
+        {elapsed >= 15 && (
+          <div className="wizard-thinking-note">
+            Broad questions run several measures in sequence. This can take up to a minute.
+          </div>
+        )}
+      </div>
     </div>
   );
 }

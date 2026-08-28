@@ -516,3 +516,31 @@ a {
   opacity: 0.45;
   cursor: default;
 }
+
+.wizard-pulse {
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  margin-right: 8px;
+  border-radius: 50%;
+  background: var(--ink-muted);
+  animation: wizard-pulse 1.2s ease-in-out infinite;
+}
+
+@keyframes wizard-pulse {
+  0%, 100% { opacity: 0.25; }
+  50%      { opacity: 1; }
+}
+
+/* Respect a reduced-motion preference: the elapsed counter already
+   communicates liveness, so the dot can simply hold steady. */
+@media (prefers-reduced-motion: reduce) {
+  .wizard-pulse { animation: none; opacity: 0.6; }
+}
+
+.wizard-thinking-note {
+  margin-top: 6px;
+  font-size: 12px;
+  font-style: normal;
+  color: var(--ink-faint);
+}

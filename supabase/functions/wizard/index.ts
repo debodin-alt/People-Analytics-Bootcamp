@@ -221,6 +221,8 @@ Deno.serve(async (req: Request) => {
         servedBy: result.servedBy,
         stopReason: result.stopReason,
         toolCalls: result.toolCalls.length,
+        iterations: result.iterations,
+        iterationMs: result.iterationMs,
         usage: result.usage,
       },
     });

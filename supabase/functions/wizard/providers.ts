@@ -29,6 +29,9 @@
 
 import Anthropic from 'npm:@anthropic-ai/sdk@0.120.0';
 
+/** Ceiling on a single model round trip. */
+const REQUEST_TIMEOUT_MS = 60_000;
+
 /** A provider-neutral tool: JSON Schema in, JSON out. */
 export interface ToolSpec {
   name: string;
@@ -60,6 +63,12 @@ export interface ToolCallRecord {
 }
 
 export interface LlmRunResult {
+  /** Round trips to the model. The dominant latency term: each one resends
+   *  the whole prompt, so 7 tool calls spread over 7 iterations costs
+   *  roughly 7x what the same 7 calls batched into 2 iterations costs. */
+  iterations?: number;
+  /** Milliseconds per model round trip, for diagnosing where time went. */
+  iterationMs?: number[];
   /** The model's final text. Expected to be JSON matching WizardResponse. */
   text: string;
   /** What the model actually called — the basis for citations, not the model's claims. */
@@ -321,16 +330,46 @@ export class GeminiProvider implements LlmProvider {
   async #generate(body: Record<string, unknown>): Promise<GeminiResponse> {
     const url =
       `https://generativelanguage.googleapis.com/v1beta/models/${this.#model}:generateContent`;
-    const res = await fetch(url, {
-      method: 'POST',
-      headers: {
-        'x-goog-api-key': this.#apiKey,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(body),
-    });
 
-    const text = await res.text();
+    // Retry transient capacity errors, and cap every attempt. Without the
+    // cap a Google-side stall hangs the whole request: gemini-3.7-flash was
+    // observed sitting for ~100s before returning 503, which presents to
+    // the user as a frozen page rather than a failure.
+    let res: Response | null = null;
+    let text = '';
+    for (let attempt = 0; attempt < 3; attempt++) {
+      const abort = new AbortController();
+      const timer = setTimeout(() => abort.abort(), REQUEST_TIMEOUT_MS);
+      try {
+        res = await fetch(url, {
+          method: 'POST',
+          headers: {
+            'x-goog-api-key': this.#apiKey,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(body),
+          signal: abort.signal,
+        });
+        text = await res.text();
+      } catch (err) {
+        if (abort.signal.aborted) {
+          throw new Error(
+            `Gemini did not respond within ${REQUEST_TIMEOUT_MS / 1000}s. ` +
+              'The model may be under load — try again, or set WIZARD_MODEL to another model.',
+          );
+        }
+        throw err;
+      } finally {
+        clearTimeout(timer);
+      }
+
+      // 429 rate limit, 503 capacity, 500 transient. Anything else is ours.
+      if (res.status !== 429 && res.status !== 503 && res.status !== 500) break;
+      if (attempt === 2) break;
+      await new Promise((r) => setTimeout(r, 800 * Math.pow(3, attempt)));
+    }
+    if (!res) throw new Error('Gemini request failed with no response.');
+
     let parsed: GeminiResponse;
     try {
       parsed = JSON.parse(text) as GeminiResponse;
@@ -375,16 +414,19 @@ export class GeminiProvider implements LlmProvider {
     }));
 
     const toolCalls: ToolCallRecord[] = [];
+    const iterationMs: number[] = [];
     let inputTokens = 0;
     let outputTokens = 0;
 
     for (let i = 0; i < req.maxIterations; i++) {
+      const started = Date.now();
       const response = await this.#generate({
         contents,
         tools,
         systemInstruction: { parts: [{ text: req.system }] },
       });
 
+      iterationMs.push(Date.now() - started);
       inputTokens += response.usageMetadata?.promptTokenCount ?? 0;
       outputTokens += response.usageMetadata?.candidatesTokenCount ?? 0;
 
@@ -399,6 +441,8 @@ export class GeminiProvider implements LlmProvider {
           stopReason: response.candidates?.[0]?.finishReason ?? 'end_turn',
           usage: { inputTokens, outputTokens },
           servedBy: this.#model,
+          iterations: iterationMs.length,
+          iterationMs,
         };
       }
 
@@ -444,6 +488,8 @@ export class GeminiProvider implements LlmProvider {
       stopReason: 'max_iterations',
       usage: { inputTokens, outputTokens },
       servedBy: this.#model,
+      iterations: iterationMs.length,
+      iterationMs,
     };
   }
 }
