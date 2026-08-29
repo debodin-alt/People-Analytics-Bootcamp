@@ -422,6 +422,146 @@ exception when others then
 end $$;
 
 -- ---------------------------------------------------------------------
+-- Ingestion: validate -> promote
+--
+-- This path shipped as a staging schema and an audit table with nothing
+-- in between, so the first real upload would have run code no one had
+-- executed, against a company's actual HR extract. These assertions exist
+-- so that stops being true permanently rather than just on the day it was
+-- built. Each rule gets its own case, because a validator that silently
+-- stops checking one class of problem is worse than none.
+-- ---------------------------------------------------------------------
+
+-- The role section above re-graded the subject down to viewer. Ingestion
+-- needs `governance`, so put it back — and pin the employee mapping to a
+-- real employee, since promotion_blockers checks accounts against the
+-- incoming extract.
+update public.app_users
+set app_role = 'admin',
+    employee_id = (select employee_id from public.employees
+                   where employment_status = 'Active' order by employee_id limit 1)
+where auth_user_id = (select auth_user_id from subject);
+
+-- A copy of real production data must pass cleanly. The expensive failure
+-- for a validator is not a missed bad row, it is crying wolf on 920 good
+-- ones until someone learns to ignore it.
+do $$
+declare v_cols text; v_fail integer;
+begin
+  delete from staging.employees;
+  select string_agg(quote_ident(column_name), ', ' order by ordinal_position)
+  into v_cols from information_schema.columns
+  where table_schema='public' and table_name='employees';
+  execute format('insert into staging.employees (%s, _source_row)
+                  select %s, row_number() over () from public.employees', v_cols, v_cols);
+
+  select count(*) into v_fail from staging.validate_load(50);
+  insert into results values
+    ('ingestion', 'real data validates clean (no false positives)', '0', v_fail::text);
+
+  select count(*) into v_fail from staging.promotion_blockers();
+  insert into results values
+    ('ingestion', 'full extract has no promotion blockers', '0', v_fail::text);
+end $$;
+
+-- A full promote round-trips, records itself, and clears staging.
+do $$
+declare v_id text; v_tables text[]; v_after integer; v_staged integer;
+begin
+  select p.data_load_id, p.tables_replaced into v_id, v_tables
+  from staging.promote_load(array['suite.xlsx'], 'regression suite') p;
+
+  select count(*) into v_after from public.employees;
+  select count(*) into v_staged from staging.employees;
+
+  insert into results values
+    ('ingestion', 'promote replaces the table', '920', v_after::text),
+    ('ingestion', 'promote records the load', 'true',
+      (exists (select 1 from public.data_loads where data_load_id = v_id))::text),
+    ('ingestion', 'promote clears staging', '0', v_staged::text);
+end $$;
+
+-- Each validation rule fires. One valid row is copied from production and
+-- broken in a specific way, so the case under test is the only difference.
+do $$
+declare v_n integer;
+begin
+  -- required column
+  delete from staging.employees;
+  insert into staging.employees select e.*, 1 from public.employees e limit 1;
+  update staging.employees set first_name = null;
+  select count(*) into v_n from staging.validate_load(10) f where f.rule = 'required';
+  insert into results values ('ingestion', 'validate catches a missing required column', 'true', (v_n > 0)::text);
+
+  -- CHECK constraint
+  delete from staging.employees;
+  insert into staging.employees select e.*, 1 from public.employees e limit 1;
+  update staging.employees set employment_status = 'Retired';
+  select count(*) into v_n from staging.validate_load(10) f where f.rule = 'value';
+  insert into results values ('ingestion', 'validate catches a bad enum value', 'true', (v_n > 0)::text);
+
+  -- duplicate primary key
+  delete from staging.employees;
+  insert into staging.employees select e.*, 1 from public.employees e limit 1;
+  insert into staging.employees select e.*, 2 from public.employees e limit 1;
+  select count(*) into v_n from staging.validate_load(10) f where f.rule = 'duplicate';
+  insert into results values ('ingestion', 'validate catches a duplicate key', 'true', (v_n > 0)::text);
+
+  -- dangling reference
+  delete from staging.employees;
+  insert into staging.employees select e.*, 1 from public.employees e limit 1;
+  update staging.employees set manager_employee_id = 'NOSUCHMGR';
+  select count(*) into v_n from staging.validate_load(10) f where f.rule = 'reference';
+  insert into results values ('ingestion', 'validate catches a dangling reference', 'true', (v_n > 0)::text);
+end $$;
+
+-- Promotion refuses an invalid load outright (ING-8). Partial writes are
+-- the failure mode this whole design exists to prevent.
+do $$
+declare v_blocked text := 'false';
+begin
+  delete from staging.employees;
+  insert into staging.employees select e.*, 1 from public.employees e limit 1;
+  update staging.employees set employment_status = 'Retired';
+  begin
+    perform * from staging.promote_load(array['bad.xlsx']);
+  exception when others then
+    v_blocked := 'true';
+  end;
+  insert into results values ('ingestion', 'promote refuses an invalid load', 'true', v_blocked);
+end $$;
+
+-- An extract that drops an employee holding a dashboard account is
+-- reported as a sentence, not as a foreign key error at commit.
+do $$
+declare v_n integer;
+begin
+  delete from staging.employees;
+  insert into staging.employees
+    select e.*, row_number() over () from public.employees e
+    where e.employee_id not in (select employee_id from public.app_users where employee_id is not null);
+  select count(*) into v_n from staging.promotion_blockers() b
+  where b.blocker = 'account would lose its employee';
+  insert into results values
+    ('ingestion', 'blocker: dropped employee still holds an account', 'true', (v_n > 0)::text);
+end $$;
+
+-- Replacing a parent without its children is caught before the delete,
+-- not by the foreign key error that first exposed it.
+do $$
+declare v_n integer;
+begin
+  delete from staging.employees;
+  insert into staging.employees select e.*, row_number() over () from public.employees e limit 5;
+  select count(*) into v_n from staging.promotion_blockers() b
+  where b.blocker = 'existing rows would be orphaned';
+  insert into results values
+    ('ingestion', 'blocker: partial parent load would orphan children', 'true', (v_n > 0)::text);
+end $$;
+
+delete from staging.employees;
+
+-- ---------------------------------------------------------------------
 -- Report
 -- ---------------------------------------------------------------------
 
