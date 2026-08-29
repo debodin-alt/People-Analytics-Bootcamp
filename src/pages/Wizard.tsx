@@ -223,15 +223,27 @@ type Row = Record<string, unknown>;
 
 const LABEL_KEYS = ['label', 'band', 'period', 'reason', 'stage_name', 'category', 'value'];
 
-/** Pick the category column: a known label name, else the first string column. */
-function labelKey(row: Row): string | null {
+/** Pick the category column: the model's choice, a known label name, else
+ *  the first string column. */
+function labelKey(row: Row, named?: string): string | null {
+  if (named && named in row) return named;
   for (const k of LABEL_KEYS) if (k in row && typeof row[k] === 'string') return k;
   for (const [k, v] of Object.entries(row)) if (typeof v === 'string') return k;
   return null;
 }
 
-/** Pick the value column: the first numeric column that isn't an ordering hint. */
-function valueKey(row: Row, exclude: string | null): string | null {
+/**
+ * Pick the column to plot.
+ *
+ * The model names it, because it is the only party that knows which series
+ * its title refers to. The fallback — first numeric column — is genuinely
+ * unsafe and kept only so an older spec still draws something: PostgREST
+ * returns keys alphabetically, so for attrition_by_dimension it picks
+ * avg_headcount, and a chart titled "Voluntary Attrition Rate" then plots
+ * headcounts. Hence the mismatch warning at the call site.
+ */
+function valueKey(row: Row, exclude: string | null, named?: string): string | null {
+  if (named && named in row && typeof row[named] === 'number') return named;
   for (const [k, v] of Object.entries(row)) {
     if (k === exclude || k.endsWith('_order')) continue;
     if (typeof v === 'number') return k;
@@ -287,8 +299,12 @@ function WizardChart({ spec }: { spec: WizardChartSpec }) {
         ? 'empty'
         : 'ready';
 
-  const lk = rows.length ? labelKey(rows[0]) : null;
-  const vk = rows.length ? valueKey(rows[0], lk) : null;
+  const lk = rows.length ? labelKey(rows[0], spec.labelColumn) : null;
+  const vk = rows.length ? valueKey(rows[0], lk, spec.valueColumn) : null;
+  // The model named a column that isn't in the result: say so rather than
+  // silently charting a different series under its title.
+  const columnMissing =
+    !!spec.valueColumn && rows.length > 0 && !(spec.valueColumn in rows[0]);
 
   // A spec that does not resolve to a label and a value is not renderable.
   // Say so rather than drawing an empty frame that reads as "no data".
@@ -311,15 +327,29 @@ function WizardChart({ spec }: { spec: WizardChartSpec }) {
 
   const isTrend = spec.form === 'line';
 
+  // An explicit pixel height, not a min-height.
+  //
+  // ChartFrame is `display:flex` with `.chart-body { flex: 1 }`. On a
+  // dashboard page the frame is a grid item, so it has a definite height
+  // and flex:1 resolves to one. In a chat bubble it is a plain block sized
+  // by its content, flex:1 resolves to zero, and Recharts' 100%-height
+  // ResponsiveContainer draws nothing into a correctly-sized empty box.
+  const chartHeight = isTrend ? 260 : Math.max(220, data.length * 26 + 56);
+
   return (
     <ChartFrame
       title={spec.title}
       status={status}
       errorMessage={state.error ?? undefined}
       emptyReason="No rows for this population."
-      bodyHeight={isTrend ? undefined : Math.max(180, data.length * 22 + 40)}
-      note={`${spec.measure}${spec.dimension ? ` by ${spec.dimension}` : ''}`}
+      bodyHeight={chartHeight}
+      note={
+        columnMissing
+          ? `${spec.measure} — could not find column "${spec.valueColumn}"; showing ${vk} instead`
+          : `${spec.measure}${spec.dimension ? ` by ${spec.dimension}` : ''}${vk ? ` — ${vk}` : ''}`
+      }
     >
+      <div style={{ height: chartHeight }}>
       {isTrend ? (
         <TrendLine
           data={data.map((d) => ({ period: d.label, value: d.value }))}
@@ -338,6 +368,7 @@ function WizardChart({ spec }: { spec: WizardChartSpec }) {
           }
         />
       )}
+      </div>
     </ChartFrame>
   );
 }

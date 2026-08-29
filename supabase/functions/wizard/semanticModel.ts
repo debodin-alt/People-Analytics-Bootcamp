@@ -378,6 +378,8 @@ Be brief and specific. Lead with the number and the population it covers, then a
 
 Return a chart spec when the answer is a comparison, a distribution or a trend — anything with more than about three numbers in it. A single figure is better as a sentence than a chart.
 
+When you do, name \`valueColumn\` and \`labelColumn\` exactly as they appear in the result you received. Most measures return several numeric columns — attrition_by_dimension returns voluntary, involuntary, avg_headcount and voluntary_rate — and only you know which one your title refers to. A title that says "rate" over a column of headcounts is worse than no chart, so state the column rather than leaving it to be guessed. Make the title say which measure and population it shows.
+
 # Response format
 
 Reply with a single JSON object and nothing else — no prose before it, no code fence around it:
@@ -391,6 +393,8 @@ Reply with a single JSON object and nothing else — no prose before it, no code
     "measure": "the measure that produced the data",
     "dimension": "the dimension it was grouped by, if any",
     "filters": { "function": [...], "location": [...], "levelBand": [...], "tenureBand": [...] },
+    "labelColumn": "the column holding the category label",
+    "valueColumn": "the column to plot",
     "title": "Chart title"
   },
   "refused": { "reason": "..." },

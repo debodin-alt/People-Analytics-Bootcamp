@@ -94,6 +94,21 @@ export interface WizardChartSpec {
   series?: string[];
   filters: FilterContext;
   title: string;
+  /**
+   * Which returned column to plot, named by the model.
+   *
+   * Not optional in spirit: a measure returns several numeric columns and
+   * only the model knows which one its title refers to.
+   * attrition_by_dimension returns voluntary, involuntary, avg_headcount
+   * and voluntary_rate; picking one by position gave "Voluntary Attrition
+   * Rate by Function" drawn from avg_headcount, which is a chart that
+   * confidently states something false. Inferring this is not safe, so it
+   * is asked for.
+   */
+  valueColumn?: string;
+  /** Which column holds the category label. Inferable in practice, but
+   *  accepted for the same reason. */
+  labelColumn?: string;
 }
 
 export interface WizardResponse {
