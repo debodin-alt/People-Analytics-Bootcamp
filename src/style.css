@@ -544,3 +544,26 @@ a {
   font-style: normal;
   color: var(--ink-faint);
 }
+
+.wizard-clear {
+  align-self: flex-start;
+  margin-bottom: 10px;
+  padding: 4px 10px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--ink-faint);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.wizard-clear:hover:not(:disabled) {
+  color: var(--ink-muted);
+  border-color: var(--ink-faint);
+}
+
+.wizard-clear:disabled {
+  opacity: 0.4;
+  cursor: default;
+}

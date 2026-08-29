@@ -1,12 +1,14 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { supabase } from '../lib/supabase';
+import { ask, bindUser, clearThread, getSnapshot, subscribe } from '../lib/wizardStore';
+import type { ChatMessage } from '../lib/wizardStore';
 import { useFilters } from '../context/FilterContext';
 import { useSession } from '../context/SessionContext';
 import { ChartFrame } from '../components/charts/ChartFrame';
 import { SortedHorizontalBar } from '../components/charts/SortedHorizontalBar';
 import { TrendLine } from '../components/charts/TrendLine';
 import { filterParams } from '../lib/useMetric';
-import type { WizardChartSpec, WizardResponse } from '../lib/types';
+import type { WizardChartSpec } from '../lib/types';
 
 /**
  * Page 12 — the Wizard (PRD_Class2 §6.1, WIZ-1..WIZ-6).
@@ -32,14 +34,6 @@ import type { WizardChartSpec, WizardResponse } from '../lib/types';
  *    components. The Wizard cannot draw something the dashboard could not.
  */
 
-interface ChatMessage {
-  role: 'user' | 'assistant';
-  content: string;
-  response?: WizardResponse;
-  diagnostics?: Record<string, unknown>;
-  error?: string;
-}
-
 const SUGGESTIONS = [
   'Which function has the highest voluntary attrition?',
   'How has headcount moved over the last 12 months?',
@@ -49,71 +43,30 @@ const SUGGESTIONS = [
 
 export function Wizard() {
   const { filters } = useFilters();
-  const { role } = useSession();
-  const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const { role, session } = useSession();
   const [input, setInput] = useState('');
-  const [busy, setBusy] = useState(false);
   const endRef = useRef<HTMLDivElement>(null);
+
+  // The thread lives in the store, not here, so navigating away mid-question
+  // neither cancels it nor loses it (see lib/wizardStore.ts).
+  const state = useSyncExternalStore(subscribe, getSnapshot);
+  const { messages, startedAt } = state;
+  const busy = startedAt !== null;
+
+  const userId = session?.user?.id ?? null;
+  useEffect(() => {
+    bindUser(userId);
+  }, [userId]);
 
   useEffect(() => {
     endRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' });
   }, [messages, busy]);
 
-  async function ask(question: string) {
-    const trimmed = question.trim();
-    if (!trimmed || busy) return;
-
-    const history: ChatMessage[] = [...messages, { role: 'user', content: trimmed }];
-    setMessages(history);
+  const send = (q: string) => {
+    if (busy) return;
     setInput('');
-    setBusy(true);
-
-    try {
-      const { data, error } = await supabase.functions.invoke('wizard', {
-        body: {
-          // Only role and content cross the wire — the chart specs and
-          // diagnostics attached to earlier turns are presentation state,
-          // not conversation.
-          messages: history.map((m) => ({ role: m.role, content: m.content })),
-          filters: {
-            function: filters.function,
-            location: filters.location,
-            levelBand: filters.levelBand,
-            tenureBand: filters.tenureBand,
-          },
-        },
-      });
-
-      if (error) throw error;
-
-      if (data?.error) {
-        setMessages((m) => [...m, { role: 'assistant', content: '', error: data.error }]);
-        return;
-      }
-
-      const response = data as WizardResponse & { diagnostics?: Record<string, unknown> };
-      setMessages((m) => [
-        ...m,
-        {
-          role: 'assistant',
-          content: response.answer ?? '',
-          response,
-          diagnostics: response.diagnostics,
-        },
-      ]);
-    } catch (err) {
-      setMessages((m) => [
-        ...m,
-        {
-          role: 'assistant',
-          content: '',
-          error: err instanceof Error ? err.message : String(err),
-        },
-      ]);
-    } finally {
-      setBusy(false);
-    }
-  }
+    void ask(q, filters);
+  };
 
   return (
     <div className="wizard">
@@ -129,18 +82,24 @@ export function Wizard() {
       {messages.length === 0 && (
         <div className="wizard-suggestions">
           {SUGGESTIONS.map((s) => (
-            <button key={s} className="wizard-suggestion" onClick={() => ask(s)}>
+            <button key={s} className="wizard-suggestion" onClick={() => send(s)}>
               {s}
             </button>
           ))}
         </div>
       )}
 
+      {messages.length > 0 && (
+        <button className="wizard-clear" onClick={clearThread} disabled={busy}>
+          Clear conversation
+        </button>
+      )}
+
       <div className="wizard-thread">
         {messages.map((m, i) => (
           <Turn key={i} message={m} />
         ))}
-        {busy && <Thinking />}
+        {busy && <Thinking startedAt={startedAt} />}
         <div ref={endRef} />
       </div>
 
@@ -148,7 +107,7 @@ export function Wizard() {
         className="wizard-composer"
         onSubmit={(e) => {
           e.preventDefault();
-          ask(input);
+          send(input);
         }}
       >
         <input
@@ -180,14 +139,15 @@ export function Wizard() {
  * and the note after fifteen seconds explains the wait rather than leaving
  * the user to invent a worse explanation for it.
  */
-function Thinking() {
-  const [elapsed, setElapsed] = useState(0);
+function Thinking({ startedAt }: { startedAt: number }) {
+  const [elapsed, setElapsed] = useState(() => Math.round((Date.now() - startedAt) / 1000));
 
   useEffect(() => {
-    const started = Date.now();
-    const id = setInterval(() => setElapsed(Math.round((Date.now() - started) / 1000)), 250);
+    // Derived from the store's start time, not from mount, so leaving the
+    // page and returning shows the true elapsed time rather than resetting.
+    const id = setInterval(() => setElapsed(Math.round((Date.now() - startedAt) / 1000)), 250);
     return () => clearInterval(id);
-  }, []);
+  }, [startedAt]);
 
   return (
     <div className="wizard-turn assistant">
