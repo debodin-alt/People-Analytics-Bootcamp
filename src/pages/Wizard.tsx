@@ -366,9 +366,20 @@ function WizardChart({ spec }: { spec: WizardChartSpec }) {
   const ok = rows.length ? orderKey(rows[0]) : null;
   const ordered = ok ? [...rows].sort((a, b) => Number(a[ok]) - Number(b[ok])) : rows;
 
-  const data = ordered.map((r) => ({
+  // A null value is not a zero.
+  //
+  // A cut with no measurable population returns null, and `Number(null)` is
+  // 0 — which draws a bar of length zero saying "no attrition here" when
+  // the truth is "not computable here". Attrition.tsx already drops these
+  // for the same reason; the Wizard has to as well, or the same population
+  // reads differently depending on which page you saw it on. Genuine zeros
+  // (Executive: 1 person, 0 leavers) are kept, because those are facts.
+  const usable = ordered.filter((r) => r[vk!] !== null && r[vk!] !== undefined);
+  const notComputable = ordered.length - usable.length;
+
+  const data = usable.map((r) => ({
     label: String(r[lk!] ?? ''),
-    value: Number(r[vk!] ?? 0),
+    value: Number(r[vk!]),
   }));
 
   const mismatch = titleColumnMismatch(spec.title, vk);
@@ -396,7 +407,10 @@ function WizardChart({ spec }: { spec: WizardChartSpec }) {
           ? `${spec.measure} — could not find column "${spec.valueColumn}"; showing ${vk} instead`
           : mismatch
             ? `⚠ ${mismatch}`
-            : `${spec.measure}${spec.dimension ? ` by ${spec.dimension}` : ''}${vk ? ` — ${vk}` : ''}`
+            : `${spec.measure}${spec.dimension ? ` by ${spec.dimension}` : ''}${vk ? ` — ${vk}` : ''}` +
+              (notComputable > 0
+                ? ` (${notComputable} cut${notComputable > 1 ? 's' : ''} omitted — not computable)`
+                : '')
       }
     >
       <div style={{ height: chartHeight }}>
