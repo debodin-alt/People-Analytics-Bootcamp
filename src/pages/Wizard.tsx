@@ -223,6 +223,45 @@ type Row = Record<string, unknown>;
 
 const LABEL_KEYS = ['label', 'band', 'period', 'reason', 'stage_name', 'category', 'value'];
 
+/**
+ * Does the title claim a proportion, and does the column supply one?
+ *
+ * The prompt tells the model to keep its title and its column in
+ * agreement, but a prompt is a request, not a guarantee — and this
+ * particular disagreement is the most damaging one the Wizard can
+ * produce. "Voluntary Attrition Rate by Function" plotted from
+ * `voluntary` puts Engineering on top at 20 while the prose above it says
+ * Design at 23.3%: a chart that contradicts its own answer, and the chart
+ * is what gets believed. Detect it and say so on the chart rather than
+ * rendering something authoritative and wrong.
+ *
+ * Not auto-corrected. Swapping the column on a string match would be
+ * guessing at intent, and a wrong silent correction is the same class of
+ * problem as the bug. Naming the discrepancy leaves the reader able to
+ * judge it.
+ */
+const RATE_WORDS = /\b(rate|percent|percentage|ratio|share|proportion)\b|%/i;
+const RATE_COLUMN = /(rate|pct|percent|ratio|share)/i;
+
+function titleColumnMismatch(title: string, column: string | null): string | null {
+  if (!column) return null;
+  const titleSaysRate = RATE_WORDS.test(title);
+  const columnIsRate = RATE_COLUMN.test(column);
+  if (titleSaysRate && !columnIsRate) {
+    return `Title mentions a rate, but this plots ${column} — read it as counts, not percentages.`;
+  }
+  if (!titleSaysRate && columnIsRate) {
+    return `This plots ${column}, which is a rate rather than the count the title implies.`;
+  }
+  return null;
+}
+
+/** Sequence columns a result may carry to declare its own order. */
+function orderKey(row: Row): string | null {
+  for (const k of Object.keys(row)) if (k.endsWith('_order') && typeof row[k] === 'number') return k;
+  return null;
+}
+
 /** Pick the category column: the model's choice, a known label name, else
  *  the first string column. */
 function labelKey(row: Row, named?: string): string | null {
@@ -320,10 +359,19 @@ function WizardChart({ spec }: { spec: WizardChartSpec }) {
     );
   }
 
-  const data = rows.map((r) => ({
+  // A result that declares its own order keeps it. The recruiting funnel
+  // is the case in point: Application -> Hire is a sequence, and sorting
+  // it by magnitude only looks right because the funnel happens to shrink
+  // monotonically. One stage larger than the one before would scramble it.
+  const ok = rows.length ? orderKey(rows[0]) : null;
+  const ordered = ok ? [...rows].sort((a, b) => Number(a[ok]) - Number(b[ok])) : rows;
+
+  const data = ordered.map((r) => ({
     label: String(r[lk!] ?? ''),
     value: Number(r[vk!] ?? 0),
   }));
+
+  const mismatch = titleColumnMismatch(spec.title, vk);
 
   const isTrend = spec.form === 'line';
 
@@ -346,7 +394,9 @@ function WizardChart({ spec }: { spec: WizardChartSpec }) {
       note={
         columnMissing
           ? `${spec.measure} — could not find column "${spec.valueColumn}"; showing ${vk} instead`
-          : `${spec.measure}${spec.dimension ? ` by ${spec.dimension}` : ''}${vk ? ` — ${vk}` : ''}`
+          : mismatch
+            ? `⚠ ${mismatch}`
+            : `${spec.measure}${spec.dimension ? ` by ${spec.dimension}` : ''}${vk ? ` — ${vk}` : ''}`
       }
     >
       <div style={{ height: chartHeight }}>
@@ -362,6 +412,7 @@ function WizardChart({ spec }: { spec: WizardChartSpec }) {
           // Ordinal dimensions must keep their sequence — sorting a tenure
           // profile by magnitude destroys the shape it exists to show.
           preserveOrder={
+            ok !== null ||
             spec.dimension === 'tenure_band' ||
             spec.dimension === 'level_band' ||
             spec.dimension === 'career_level'
