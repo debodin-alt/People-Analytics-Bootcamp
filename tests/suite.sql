@@ -443,6 +443,14 @@ set app_role = 'admin',
                    where employment_status = 'Active' order by employee_id limit 1)
 where auth_user_id = (select auth_user_id from subject);
 
+-- Everything below writes staging directly via SQL rather than through
+-- staging.stage_rows(), so it never goes through staging.reset() either —
+-- the one call that acquires the upload lock (metrics.load_lock) that
+-- promote_load() now requires. Acquired once here, as the app's own
+-- upload flow would via reset(), so the ingestion tests exercise the real
+-- invariant rather than being exempt from it.
+select metrics.acquire_load_lock();
+
 -- A copy of real production data must pass cleanly. The expensive failure
 -- for a validator is not a missed bad row, it is crying wolf on 920 good
 -- ones until someone learns to ignore it.
@@ -480,6 +488,31 @@ begin
     ('ingestion', 'promote records the load', 'true',
       (exists (select 1 from public.data_loads where data_load_id = v_id))::text),
     ('ingestion', 'promote clears staging', '0', v_staged::text);
+end $$;
+
+-- REGRESSION: two admins uploading at once could wipe or interleave each
+-- other's staged rows, or promote a mixture of both files as one load
+-- (found in code review, 2026-08-31). The successful promote above
+-- released the lock it held; without holding it again, both stage_rows()
+-- and promote_load() must now refuse.
+do $$
+declare v_stage_refused text := 'false'; v_promote_refused text := 'false';
+begin
+  begin
+    perform staging.stage_rows('employees', '[]'::jsonb);
+  exception when others then
+    v_stage_refused := 'true';
+  end;
+  insert into results values ('regression', 'stage_rows refuses without the upload lock', 'true', v_stage_refused);
+
+  delete from staging.employees;
+  insert into staging.employees select e.*, 1 from public.employees e limit 1;
+  begin
+    perform * from staging.promote_load(array['suite.xlsx']);
+  exception when others then
+    v_promote_refused := 'true';
+  end;
+  insert into results values ('regression', 'promote_load refuses without the upload lock', 'true', v_promote_refused);
 end $$;
 
 -- Each validation rule fires. One valid row is copied from production and
@@ -524,6 +557,10 @@ begin
   delete from staging.employees;
   insert into staging.employees select e.*, 1 from public.employees e limit 1;
   update staging.employees set employment_status = 'Retired';
+  -- The first promote (above) released the lock on success; re-acquire it
+  -- so this exception comes from the validation refusal being tested, not
+  -- from the lock check that now runs before it.
+  perform metrics.acquire_load_lock();
   begin
     perform * from staging.promote_load(array['bad.xlsx']);
   exception when others then
