@@ -31,6 +31,21 @@ export interface ParsedTable extends RawTable {
   sheetName: string;
   /** Columns present in the file that no target column matched. */
   unmappedColumns: string[];
+  /**
+   * Columns that normalised to a target column another column in the same
+   * sheet already claimed (e.g. "Employee ID" and a stray "employee_id").
+   * The first match wins; these are dropped rather than silently
+   * overwriting it, and reported so the admin knows a column was lost.
+   */
+  duplicateColumns: string[];
+  /**
+   * True when findHeaderRow could not confirm the header row against a
+   * following data row (e.g. a sheet with a header but zero data rows) and
+   * fell back to treating row 0 as the header. Usually right; occasionally
+   * a title row above the real header read as columns instead. Worth a
+   * second look before promoting rather than a silent guess.
+   */
+  headerRowUncertain?: boolean;
   /** Set when the sheet name matched no known table; rows are not staged. */
   unrecognised?: boolean;
 }
@@ -66,7 +81,7 @@ function matchTable(sheetName: string, knownTables: string[]): string | null {
  * mostly non-empty text and is followed by a row of similar width — which
  * distinguishes a header from a stray title cell sitting alone above it.
  */
-function findHeaderRow(rows: unknown[][]): number {
+function findHeaderRow(rows: unknown[][]): { index: number; confident: boolean } {
   for (let i = 0; i < Math.min(rows.length, 20); i++) {
     const row = rows[i] ?? [];
     const filled = row.filter((c) => c !== null && c !== undefined && String(c).trim() !== '');
@@ -74,15 +89,30 @@ function findHeaderRow(rows: unknown[][]): number {
     const allText = filled.every((c) => typeof c === 'string' || typeof c === 'number');
     const next = rows[i + 1] ?? [];
     const nextFilled = next.filter((c) => c !== null && c !== undefined && String(c).trim() !== '');
-    if (allText && nextFilled.length >= Math.ceil(filled.length / 2)) return i;
+    if (allText && nextFilled.length >= Math.ceil(filled.length / 2)) return { index: i, confident: true };
   }
-  return 0;
+  // No row could be confirmed against a following data row — most often a
+  // sheet with a header and zero data rows (a real header, correctly
+  // guessed), occasionally a title row with nothing to distinguish it from
+  // one. Flagged rather than trusted silently either way.
+  return { index: 0, confident: false };
 }
 
 /** Excel serial dates arrive as numbers or Dates; the database wants ISO. */
 function normaliseValue(v: unknown): unknown {
   if (v === undefined || v === '') return null;
-  if (v instanceof Date) return v.toISOString().slice(0, 10);
+  if (v instanceof Date) {
+    // exceljs builds a date cell as local midnight for that calendar date,
+    // not UTC midnight. toISOString() converts through UTC, so anywhere
+    // west of Greenwich a hire date of 2026-01-01 becomes 2025-12-31 the
+    // moment the browser's timezone offset is negative. Reading the local
+    // calendar fields back out — the same fields exceljs set — recovers
+    // the date the cell actually showed, regardless of the reader's zone.
+    const y = v.getFullYear();
+    const m = String(v.getMonth() + 1).padStart(2, '0');
+    const d = String(v.getDate()).padStart(2, '0');
+    return `${y}-${m}-${d}`;
+  }
   // exceljs returns rich text and formula cells as objects rather than scalars.
   if (v && typeof v === 'object') {
     const o = v as Record<string, unknown>;
@@ -102,17 +132,33 @@ function buildTable(
   knownTables: string[],
   columnsByTable: Record<string, string[]>,
 ): ParsedTable {
-  const headerRowIndex = findHeaderRow(grid);
+  const { index: headerRowIndex, confident: headerRowConfident } = findHeaderRow(grid);
   const rawHeaders = (grid[headerRowIndex] ?? []).map((h) => String(h ?? '').trim());
   const target = matchTable(sheetName, knownTables);
 
   const targetColumns = target ? (columnsByTable[target] ?? []) : [];
+
+  // Two different source headers can normalise to the same target column
+  // (e.g. "Employee ID" and a stray duplicate "employee_id"). The first
+  // occurrence claims it; later ones are dropped rather than silently
+  // overwriting the earlier column's values row by row, and reported
+  // alongside unmappedColumns so a promote can't lose data unnoticed.
+  const seenTargets = new Set<string>();
+  const duplicateColumns: string[] = [];
   const mapped = rawHeaders.map((h) => {
     const n = normalise(h);
-    return targetColumns.includes(n) ? n : null;
+    if (!targetColumns.includes(n)) return null;
+    if (seenTargets.has(n)) {
+      if (h !== '') duplicateColumns.push(h);
+      return null;
+    }
+    seenTargets.add(n);
+    return n;
   });
 
-  const unmappedColumns = rawHeaders.filter((h, i) => h !== '' && mapped[i] === null);
+  const unmappedColumns = rawHeaders.filter(
+    (h, i) => h !== '' && mapped[i] === null && !duplicateColumns.includes(h),
+  );
 
   const rows: Record<string, unknown>[] = [];
   for (let r = headerRowIndex + 1; r < grid.length; r++) {
@@ -136,6 +182,8 @@ function buildTable(
     rows,
     sheetName,
     unmappedColumns,
+    duplicateColumns,
+    headerRowUncertain: !headerRowConfident,
     unrecognised: target === null,
   };
 }

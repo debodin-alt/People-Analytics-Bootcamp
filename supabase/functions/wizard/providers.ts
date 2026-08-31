@@ -607,17 +607,41 @@ export class AzureOpenAiProvider implements LlmProvider {
   }
 }
 
+// Providers that call out to a public third-party API rather than a
+// company-governed endpoint. Real HR data must not reach these unless
+// someone has deliberately accepted that — see WIZARD_DATA_MODE below.
+const PUBLIC_API_PROVIDERS = new Set(['claude', 'gemini']);
+
 export function selectProvider(env: {
   provider?: string;
   anthropicApiKey?: string;
   geminiApiKey?: string;
   model?: string;
   effort?: string;
+  dataMode?: string;
 }): LlmProvider {
   // Default to whichever key is actually present, so the deployment is
   // configured by setting one secret rather than two. An explicit
   // WIZARD_PROVIDER always wins.
   const id = env.provider ?? (env.geminiApiKey ? 'gemini' : 'claude');
+
+  // Claude and Gemini are "the demo provider" (see AzureOpenAiProvider's
+  // docstring) — real HR data flowing through them means it leaves the
+  // region to a public API with no reviewed data-processing agreement for
+  // this use. WIZARD_DATA_MODE defaults to 'demo' precisely so that
+  // running against real data is a decision someone makes on purpose, not
+  // a config default nobody looked at. Set WIZARD_DATA_MODE=production
+  // only once that's actually been reviewed (or once azure-openai is
+  // implemented and selected instead).
+  const dataMode = env.dataMode ?? 'demo';
+  if (dataMode === 'production' && PUBLIC_API_PROVIDERS.has(id)) {
+    throw new Error(
+      `WIZARD_DATA_MODE=production but WIZARD_PROVIDER resolves to '${id}', a public ` +
+        "third-party API. Real HR data must not be queried through it without a reviewed " +
+        "data-processing agreement. Either set WIZARD_PROVIDER=azure-openai (once " +
+        "implemented), or leave WIZARD_DATA_MODE unset/'demo' if this is still synthetic data.",
+    );
+  }
 
   switch (id) {
     case 'claude':

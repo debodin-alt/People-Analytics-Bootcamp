@@ -11,7 +11,8 @@
 -- delete — that is, the upload screen would have been broken on its first
 -- real use while the suite stayed green.
 --
---  satisfies the guard without changing what the statements do.
+-- Every whole-table delete in this path now appends `where true`, which
+-- satisfies the guard without changing what the statements do.
 -- The guard is worth keeping rather than disabling: it exists to stop an
 -- accidental unbounded delete, and this path deletes whole production
 -- tables for a living.

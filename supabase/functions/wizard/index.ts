@@ -175,6 +175,7 @@ Deno.serve(async (req: Request) => {
       geminiApiKey: Deno.env.get('GEMINI_API_KEY') ?? undefined,
       model: Deno.env.get('WIZARD_MODEL') ?? undefined,
       effort: Deno.env.get('WIZARD_EFFORT') ?? undefined,
+      dataMode: Deno.env.get('WIZARD_DATA_MODE') ?? undefined,
     });
 
     const system = buildSystemPrompt({

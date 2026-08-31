@@ -323,7 +323,7 @@ begin
     select unnest(array['composition_by_function','attrition_by_dimension',
                         'span_of_control_distribution','engagement_by_cohort',
                         'time_to_fill_by_dimension','applications_by_source',
-                        'engagement_by_category'])
+                        'engagement_by_category','dimension_values'])
   loop
     v_refused := 'false';
     begin
@@ -335,6 +335,7 @@ begin
         when 'span_of_control_distribution' then perform * from metrics.span_of_control_distribution();
         when 'applications_by_source' then perform * from metrics.applications_by_source();
         when 'engagement_by_category' then perform * from metrics.engagement_by_category();
+        when 'dimension_values' then perform * from metrics.dimension_values('function');
       end case;
     exception when others then
       v_refused := 'true';

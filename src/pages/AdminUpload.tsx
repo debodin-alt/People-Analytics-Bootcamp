@@ -56,14 +56,23 @@ export function AdminUpload() {
   useEffect(() => {
     supabase
       .rpc('ingest_target_schema')
-      .then(({ data, error: e }) => {
-        if (e) { setError(e.message); return; }
-        const rows = (data ?? []) as { table_name: string; columns: string[] }[];
-        setSchema({
-          names: rows.map((r) => r.table_name),
-          cols: Object.fromEntries(rows.map((r) => [r.table_name, r.columns])),
-        });
-      });
+      .then(
+        ({ data, error: e }) => {
+          if (e) { setError(e.message); return; }
+          const rows = (data ?? []) as { table_name: string; columns: string[] }[];
+          setSchema({
+            names: rows.map((r) => r.table_name),
+            cols: Object.fromEntries(rows.map((r) => [r.table_name, r.columns])),
+          });
+        },
+        // A rejected promise (offline, CORS, timeout) is not the same as a
+        // resolved `{error}` — without this second handler, that failure
+        // left schema null and the file input disabled forever, with
+        // nothing on screen to say why. Supabase's builder is only
+        // PromiseLike, not a full Promise, so this is `.then`'s second
+        // argument rather than a chained `.catch`.
+        (e: unknown) => setError(e instanceof Error ? e.message : String(e)),
+      );
   }, []);
 
   async function handleFiles(files: FileList | null) {
@@ -187,12 +196,24 @@ export function AdminUpload() {
         <Section title="What was read">
           <table className="upload-table">
             <thead>
-              <tr><Th>Sheet</Th><Th>Table</Th><Th>Header row</Th><Th>Rows</Th><Th>Unmapped columns</Th></tr>
+              <tr><Th>Sheet</Th><Th>Table</Th><Th>Header row</Th><Th>Rows</Th><Th>Unmapped columns</Th><Th>Duplicate columns</Th></tr>
             </thead>
             <tbody>
-              {parsed.map((t) => (
-                <tr key={t.sheetName}>
-                  <Td>{t.sheetName}</Td>
+              {/* Keyed by sheet name + position: two uploaded files (or two
+                  sheets within one file) can share a sheet name, and a key
+                  collision there silently drops/misrenders one row of this
+                  readback — exactly the table the admin relies on before
+                  confirming a promote. */}
+              {parsed.map((t, i) => (
+                <tr key={`${t.sheetName}::${i}`}>
+                  <Td>
+                    {t.sheetName}
+                    {t.headerRowUncertain && (
+                      <span className="upload-warn" title="Could not confirm this against a following data row — verify the columns below.">
+                        {' '}(header row unconfirmed)
+                      </span>
+                    )}
+                  </Td>
                   <Td mono>{t.unrecognised ? <span className="upload-warn">not recognised — skipped</span> : t.targetTable}</Td>
                   <Td>{t.headerRowIndex + 1}</Td>
                   <Td>{t.rows.length.toLocaleString()}</Td>
@@ -200,6 +221,11 @@ export function AdminUpload() {
                       Shown rather than dropped quietly: a silently ignored
                       column is a successful-looking load of partial data. */}
                   <Td>{t.unmappedColumns.length === 0 ? '—' : <span className="upload-warn">{t.unmappedColumns.join(', ')}</span>}</Td>
+                  {/* Two source columns that normalised to the same target
+                      column — the second is dropped, not merged, so it's
+                      surfaced here rather than silently overwriting the
+                      first one's values. */}
+                  <Td>{t.duplicateColumns.length === 0 ? '—' : <span className="upload-warn">{t.duplicateColumns.join(', ')}</span>}</Td>
                 </tr>
               ))}
             </tbody>
