@@ -22,7 +22,7 @@ raw=$(supabase db query --linked --output-format json -f tests/suite.sql 2>&1)
 
 if ! echo "$raw" | grep -q '"rows"'; then
   echo "  suite failed to run:"
-  echo "$raw" | tail -20 | sed 's/^/    /'
+  echo "$raw" | sed 's/^/    /'
   exit 1
 fi
 
