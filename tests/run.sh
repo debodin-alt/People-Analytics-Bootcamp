@@ -20,7 +20,7 @@ fail=0
 echo "── SQL assertions ──────────────────────────────────────────"
 raw=$(supabase db query --linked --output-format json -f tests/suite.sql 2>&1)
 
-if ! echo "$raw" | grep -q '"rows"'; then
+if ! echo "$raw" | grep -q '"pass"'; then
   echo "  suite failed to run:"
   echo "$raw" | sed 's/^/    /'
   exit 1

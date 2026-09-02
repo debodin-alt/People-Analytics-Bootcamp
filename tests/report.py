@@ -8,13 +8,24 @@ import json
 import sys
 
 raw = sys.stdin.read()
-start = raw.find('{')
-if start < 0:
+
+# supabase db query --output-format json has been observed returning two
+# different top-level shapes for the identical CLI version (2.111.0) and
+# the identical query: {"boundary": ..., "rows": [...]} locally, and a
+# bare [...] array of row objects in GitHub Actions. Rather than assume
+# either is authoritative, accept both — whichever bracket appears first
+# is where the payload starts.
+brace = raw.find('{')
+bracket = raw.find('[')
+candidates = [i for i in (brace, bracket) if i >= 0]
+if not candidates:
     print("  no JSON in suite output:")
     print(raw[-2000:])
     sys.exit(1)
+start = min(candidates)
 
-rows = json.loads(raw[start:])["rows"]
+parsed = json.loads(raw[start:])
+rows = parsed["rows"] if isinstance(parsed, dict) else parsed
 failed = [r for r in rows if not r["pass"]]
 
 by_section = {}
