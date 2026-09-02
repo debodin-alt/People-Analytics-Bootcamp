@@ -29,7 +29,11 @@ jobs:
 
       - uses: supabase/setup-cli@v1
         with:
-          version: latest
+          # Pinned, not "latest": db query's default output format changed
+          # between CLI versions and broke tests/run.sh's JSON parsing in
+          # CI while passing locally — pin to what's proven to work here,
+          # and bump deliberately rather than silently drifting.
+          version: 2.111.0
 
       - name: Link the Supabase project
         run: supabase link --project-ref "$SUPABASE_PROJECT_REF"

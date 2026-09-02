@@ -18,7 +18,7 @@ cd "$(dirname "$0")/.."
 fail=0
 
 echo "── SQL assertions ──────────────────────────────────────────"
-raw=$(supabase db query --linked -f tests/suite.sql 2>&1)
+raw=$(supabase db query --linked --output-format json -f tests/suite.sql 2>&1)
 
 if ! echo "$raw" | grep -q '"rows"'; then
   echo "  suite failed to run:"
